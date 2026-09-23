@@ -22252,6 +22252,24 @@ body.remote-terminal-resizing * {
   margin-top: 10px;
 }
 
+/* Keep the required-row accent in the card gutter, outside checkbox alignment. */
+.multi-ssh-run-confirmation .execution-confirm {
+  border-left: 0;
+  padding-left: 0;
+  position: relative;
+}
+
+.multi-ssh-run-confirmation .execution-confirm::before {
+  background: var(--accent);
+  bottom: 0;
+  content: "";
+  inset-inline-start: -10px;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: 3px;
+}
+
 .multi-ssh-legacy-preview .ssh-preview-grid {
   margin-bottom: 10px;
 }

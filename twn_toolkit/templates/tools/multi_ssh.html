@@ -195,8 +195,8 @@
               {% if action_editor.original_name %}<span class="pill success">{{ selected_matrix.target_count }}/{{ selected_matrix.target_count }} ready</span>{% endif %}
             </div>
             <div class="multi-ssh-profile-fields">
-              <label>Action name<input name="matrix_action_name" maxlength="100" value="{{ action_editor.name }}" placeholder="Collect interface status" data-1p-ignore required></label>
-              <label>Device family <span class="label-optional">optional</span><input name="matrix_action_platform" maxlength="80" value="{{ action_editor.platform }}" placeholder="FortiGate, Cisco IOS, Linux…" data-1p-ignore></label>
+              <label><span>Action name</span><input name="matrix_action_name" maxlength="100" value="{{ action_editor.name }}" placeholder="Collect interface status" data-1p-ignore required></label>
+              <label><span>Device family <span class="label-optional">optional</span></span><input name="matrix_action_platform" maxlength="80" value="{{ action_editor.platform }}" placeholder="FortiGate, Cisco IOS, Linux…" data-1p-ignore></label>
             </div>
             <label>Description <span class="label-optional">optional</span><input name="matrix_action_description" maxlength="500" value="{{ action_editor.description }}" placeholder="When should an operator use this action?" data-1p-ignore></label>
             <label>Commands<textarea class="command-input" name="commands" rows="9" placeholder="config vdom&#10;edit {{ '{{ vdom }}' }}&#10;get system interface {{ '{{ interface }}' }}&#10;end" required data-ssh-action-commands data-1p-ignore>{{ action_editor.commands }}</textarea><small class="field-note">Enter commands in execution order. Insert host variables below instead of duplicating this action for each device.</small></label>
@@ -295,7 +295,7 @@
                 <label>Run name (optional)<input name="run_name" maxlength="100" value="{{ form.run_name }}" placeholder="{{ form.host_matrix_name or 'Branch switch checks' }}"><span class="field-note">Use a name you will recognize in recent runs. A timestamp is shown automatically.</span></label>
                 <div class="form-grid"><label>Username<input name="username" value="{{ form.username }}" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><label>SSH port<input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required></label></div>
                 {% include "tools/_multi_ssh_run_options.html" %}
-                <label class="check"><input name="confirm_execution" type="checkbox" required>I reviewed the selected actions and intend to execute this signed run plan</label>
+                <label class="check execution-confirm"><input name="confirm_execution" type="checkbox" required>I reviewed the selected actions and intend to execute this signed run plan</label>
                 <div class="button-row"><button name="action" type="submit" value="run" data-ssh-run-button>Run {{ preview.action_count }} action(s) on {{ preview.plans|length }} host(s)</button></div>
               </section>
             {% endif %}
@@ -330,7 +330,7 @@
                 <label>Run name (optional)<input name="run_name" maxlength="100" value="{{ form.run_name }}" placeholder="{{ form.host_matrix_name or 'Branch switch checks' }}"><span class="field-note">Use a name you will recognize in recent runs. A timestamp is shown automatically.</span></label>
                 <div class="form-grid"><label>Username<input name="username" value="{{ form.username }}" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><label>SSH port<input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required></label></div>
                 {% include "tools/_multi_ssh_run_options.html" %}
-                <label class="check"><input name="confirm_execution" type="checkbox" required>I reviewed the rendered commands and intend to execute this signed run plan</label>
+                <label class="check execution-confirm"><input name="confirm_execution" type="checkbox" required>I reviewed the rendered commands and intend to execute this signed run plan</label>
                 <div class="button-row"><button name="action" type="submit" value="run" data-ssh-run-button>Run on {{ preview.plans|length }} host(s)</button></div>
               </section>
             {% endif %}
