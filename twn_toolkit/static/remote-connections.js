@@ -21,7 +21,12 @@
   const credentialForm = document.getElementById("remote-credential-form");
   const bulkForm = document.getElementById("remote-library-bulk-form");
   const importForm = document.getElementById("remote-host-import-form");
-  const editorForms = [folderForm, hostForm, credentialForm, bulkForm, importForm];
+  const renameDialog = document.getElementById("remote-library-rename-dialog");
+  const renameForm = document.getElementById("remote-library-rename-form");
+  let renameTarget = null;
+  let bulkTarget = null;
+  const selectionRows = new Map();
+  const editorForms = [renameForm, folderForm, hostForm, credentialForm, bulkForm, importForm];
   const guard = () => window.TwnUnsavedForms;
   function editorStatus(form, message) {
     const status = form.querySelector('.tool-status');
@@ -85,7 +90,7 @@
     select.dataset.lookupPlaceholder = kind === "folder" ? "Find a folder…" : "Credential name or username…";
     select.twnLookup = async ({query, page, signal}) => {
       let subject = editingItems[subjectKind];
-      if (subjectKind === "bulk") subject = [...library.hosts, ...library.folders].find((row) => selectedHosts.has(row.id) || selectedFolders.has(row.id));
+      if (subjectKind === "bulk") subject = bulkItems()[0];
       const target = new URL(manager.dataset.libraryUrl, window.location.href);
       target.searchParams.set("metadata_query", query);
       target.searchParams.set("metadata_page", page);
@@ -101,7 +106,7 @@
       const choices = data.library;
       const blocked = new Set();
       if (kind === "folder" && subjectKind === "folder" && subject) { folderDescendants(subject.id, blocked); blocked.add(subject.id); }
-      if (kind === "folder" && subjectKind === "bulk") selectedFolders.forEach((id) => { blocked.add(id); folderDescendants(id, blocked); });
+      if (kind === "folder" && subjectKind === "bulk") bulkItems().filter((item) => item.kind === "folder").forEach(({id}) => { blocked.add(id); folderDescendants(id, blocked); });
       const options = choices[kind === "folder" ? "folders" : "credentials"]
         .filter((row) => !row.context_only && !blocked.has(row.id) && (subject || !["host", "folder"].includes(subjectKind) || row.owned || row.mso?.enabled))
         .map((row) => ({id: row.id, label: kind === "folder" ? row.name : `${row.name} · ${row.username}`, row}));
@@ -165,7 +170,7 @@
       if (!response.ok) throw new Error(data.error || "Connections could not be loaded.");
       if (requestId !== libraryRequest) return;
       library = data.library;
-      selectedHosts.clear(); selectedFolders.clear();
+      rememberSelection();
       render();
     } catch (error) {
       if (requestId === libraryRequest) {
@@ -271,7 +276,7 @@
     if (event.key !== "Escape") return;
     const openMenu = document.querySelector(".remote-connection-folder-menu:not([hidden])");
     if (!openMenu) return;
-    const trigger = openMenu.closest(".remote-connection-folder")
+    const trigger = openMenu.closest(".remote-connection-host, .remote-connection-folder")
       ?.querySelector(".remote-connection-folder-menu-trigger");
     closeFolderMenus();
     trigger?.focus();
@@ -453,7 +458,7 @@
       menu.append(folderMenuAction("Add host", () => editHost(folder.id)),
         folderMenuAction("Add subfolder", () => editFolder(null, folder.id)));
     }
-    menu.append(folderMenuAction("Edit folder", () => editFolder(folder)));
+    appendRowActions(menu, "folder", folder);
     menuTrigger.addEventListener("click", (event) => {
       event.stopPropagation();
       const willOpen = menu.hidden;
@@ -534,14 +539,132 @@
     manage.textContent = "•••";
     manage.title = `Manage ${host.name}`;
     manage.setAttribute("aria-label", `Manage ${host.name}`);
-    manage.addEventListener("click", () => editHost(host));
+    manage.classList.add("remote-connection-folder-menu-trigger");
+    manage.setAttribute("aria-haspopup", "menu");
+    manage.setAttribute("aria-expanded", "false");
+    const wrap = document.createElement("div");
+    wrap.className = "remote-connection-folder-menu-wrap";
+    const menu = document.createElement("div");
+    menu.className = "remote-connection-folder-menu";
+    menu.id = `${host.id}-actions`;
+    menu.setAttribute("role", "menu");
+    menu.hidden = true;
+    manage.setAttribute("aria-controls", menu.id);
+    appendRowActions(menu, "host", host);
+    manage.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const willOpen = menu.hidden;
+      closeFolderMenus();
+      menu.hidden = !willOpen;
+      manage.setAttribute("aria-expanded", String(willOpen));
+      if (willOpen && event.detail === 0) menu.querySelector("button")?.focus();
+    });
     manage.hidden = !canManage(host);
+    wrap.append(manage);
     if (selectionMode && canManage(host)) {
       row.append(selectionControl("host", host.id, host.name));
     }
-    row.append(connect, manage);
+    row.append(connect, wrap, menu);
     return row;
   }
+
+  function rememberSelection() {
+    for (const [kind, rows, ids] of [["host", library.hosts, selectedHosts], ["folder", library.folders, selectedFolders]]) {
+      for (const row of rows) if (ids.has(row.id)) selectionRows.set(`${kind}:${row.id}`, {...row, kind});
+    }
+    for (const [key, row] of selectionRows) if (!(row.kind === "host" ? selectedHosts : selectedFolders).has(row.id)) selectionRows.delete(key);
+  }
+
+  function addSelection(kind, id) {
+    const item = library[kind === "host" ? "hosts" : "folders"].find((row) => row.id === id);
+    if (!item || !canManage(item)) return;
+    if (selectedHosts.size + selectedFolders.size >= 500) { pageStatus.textContent = "Select no more than 500 items at once."; return; }
+    (kind === "host" ? selectedHosts : selectedFolders).add(id);
+    rememberSelection();
+  }
+
+  function bulkItems() {
+    return bulkTarget ? [bulkTarget] : [...selectionRows.values()];
+  }
+
+  function renderSelectedItems(items) {
+    const list = document.getElementById("remote-library-selected-items");
+    list.replaceChildren(...items.map((item) => {
+      const row = document.createElement("li");
+      const label = document.createElement("span");
+      label.textContent = `${item.name} · ${item.kind === "folder" ? "Folder" : `${item.protocol.toUpperCase()} · ${item.host || item.console_device_label}`} · ${visibilityLabel(item)}`;
+      row.append(label);
+      if (!bulkTarget) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "secondary compact";
+        remove.textContent = "Remove";
+        remove.setAttribute("aria-label", `Remove ${item.name} from selection`);
+        remove.addEventListener("click", () => {
+          (item.kind === "host" ? selectedHosts : selectedFolders).delete(item.id);
+          updateSelectionBar();
+          renderTree();
+          renderSelectedItems(bulkItems());
+          document.getElementById("remote-library-bulk-summary").textContent = `${bulkItems().length} items selected across pages and searches. Only the changes you choose will be applied.`;
+          bulkForm.querySelector('button[type="submit"]').disabled = !bulkItems().length || new Set(bulkItems().map((row) => row.user_id)).size !== 1;
+        });
+        row.append(remove);
+      }
+      return row;
+    }));
+  }
+
+  function appendRowActions(menu, kind, item) {
+    menu.addEventListener("keydown", (event) => {
+      const actions = [...menu.querySelectorAll('[role="menuitem"]')];
+      const index = actions.indexOf(document.activeElement);
+      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+        event.preventDefault();
+        const next = event.key === "Home" ? 0 : event.key === "End" ? actions.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + actions.length) % actions.length;
+        actions[next]?.focus();
+      }
+    });
+    menu.append(folderMenuAction("Rename", () => {
+      renameTarget = {...item, kind};
+      document.getElementById("remote-library-rename-name").value = item.name;
+      editorStatus(renameForm, "");
+      openDialog(renameDialog, "remote-library-rename-name");
+    }), folderMenuAction("Move", () => openBulkEditor({...item, kind})),
+    folderMenuAction("Edit", () => kind === "host" ? editHost(item) : editFolder(item)));
+    if (item.owned) menu.append(folderMenuAction("Duplicate", () => runRowAction(kind, item, "duplicate")));
+    const remove = folderMenuAction("Delete", () => runRowAction(kind, item, "delete"));
+    remove.classList.add("danger");
+    menu.append(remove);
+  }
+
+  let rowActionPending = false;
+  async function runRowAction(kind, item, action) {
+    if (rowActionPending) return;
+    if (action === "delete" && !window.confirm(`Delete ${kind} '${item.name}'?${kind === "folder" ? " Move or delete its contents first." : ""}${item.mso?.enabled ? " This also removes its shared copies from the fleet." : ""}`)) return;
+    rowActionPending = true;
+    try {
+      const base = kind === "host" ? manager.dataset.hostsUrl : manager.dataset.foldersUrl;
+      await mutate(`${base}/${item.id}${action === "duplicate" ? "/duplicate" : ""}`, {method: action === "duplicate" ? "POST" : "DELETE"});
+      if (action === "delete") {
+        (kind === "host" ? selectedHosts : selectedFolders).delete(item.id);
+        updateSelectionBar();
+      }
+    } catch (error) { pageStatus.textContent = error.message; }
+    finally { rowActionPending = false; }
+  }
+
+  renameForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!renameTarget) return;
+    try {
+      await mutate(manager.dataset.bulkUrl, {method: "POST", body: {
+        host_ids: renameTarget.kind === "host" ? [renameTarget.id] : [],
+        folder_ids: renameTarget.kind === "folder" ? [renameTarget.id] : [],
+        name: document.getElementById("remote-library-rename-name").value,
+      }});
+      closeEditor(renameDialog, true);
+    } catch (error) { editorStatus(renameForm, error.message); }
+  });
 
   function selectionControl(type, id, name) {
     const label = document.createElement("label");
@@ -555,8 +678,9 @@
     input.checked = (type === "host" ? selectedHosts : selectedFolders).has(id);
     input.addEventListener("change", () => {
       const selection = type === "host" ? selectedHosts : selectedFolders;
-      if (input.checked) selection.add(id);
+      if (input.checked) addSelection(type, id);
       else selection.delete(id);
+      input.checked = selection.has(id);
       updateSelectionBar();
     });
     label.append(input);
@@ -566,7 +690,7 @@
   function toggleSelected(type, id) {
     const selection = type === "host" ? selectedHosts : selectedFolders;
     if (selection.has(id)) selection.delete(id);
-    else selection.add(id);
+    else addSelection(type, id);
     renderTree();
     updateSelectionBar();
   }
@@ -588,7 +712,7 @@
   function closeFolderMenus() {
     document.querySelectorAll(".remote-connection-folder-menu:not([hidden])").forEach((menu) => {
       menu.hidden = true;
-      menu.closest(".remote-connection-folder")
+      menu.closest(".remote-connection-host, .remote-connection-folder")
         ?.querySelector(".remote-connection-folder-menu-trigger")
         ?.setAttribute("aria-expanded", "false");
     });
@@ -1268,9 +1392,11 @@
   }
 
   function updateSelectionBar() {
+    rememberSelection();
     const total = selectedHosts.size + selectedFolders.size;
     document.getElementById("remote-connection-selection-count").textContent =
       `${total} selected`;
+    document.getElementById("remote-connection-selection-count").title = "Selection includes other pages and searches; Done clears it.";
     document.querySelector("[data-edit-selection]").disabled = total === 0;
     document.querySelector("[data-clear-selection]").disabled = total === 0;
   }
@@ -1279,8 +1405,8 @@
     tree.querySelectorAll("input[data-select-type]").forEach((input) => {
       if (input.offsetParent === null) return;
       const selection = input.dataset.selectType === "host" ? selectedHosts : selectedFolders;
-      selection.add(input.dataset.selectId);
-      input.checked = true;
+      addSelection(input.dataset.selectType, input.dataset.selectId);
+      input.checked = selection.has(input.dataset.selectId);
     });
     updateSelectionBar();
   }
@@ -1292,10 +1418,13 @@
     updateSelectionBar();
   }
 
-  function openBulkEditor() {
-    if (!selectedHosts.size && !selectedFolders.size) return;
-    const selected = [...library.hosts.filter((item) => selectedHosts.has(item.id)), ...library.folders.filter((item) => selectedFolders.has(item.id))];
+  function openBulkEditor(target = null) {
+    bulkTarget = target?.kind ? target : null;
+    const selected = bulkItems();
+    if (!selected.length) return;
+    bulkForm.reset();
     const existing = selected[0];
+    renderSelectedItems(selected);
     bulkForm.querySelector('button[type="submit"]').disabled = false;
     if (new Set(selected.map((item) => item.user_id)).size !== 1) {
       bulkForm.querySelector('button[type="submit"]').disabled = true;
@@ -1305,24 +1434,27 @@
       return;
     }
     setOptions(document.getElementById("remote-library-credential"), library.credentials.filter((item) => !item.scope_host_id && sameLibrary(item, existing)).map((item) => ({id: item.id, label: item.name})), "");
-    const blockedFolders = new Set(selectedFolders);
-    selectedFolders.forEach((folderId) => folderDescendants(folderId, blockedFolders));
+    const blockedFolders = new Set(selected.filter((item) => item.kind === "folder").map((item) => item.id));
+    [...blockedFolders].forEach((folderId) => folderDescendants(folderId, blockedFolders));
     const destinations = [
       {id: "", label: "Connections (root)"},
       ...flattenFolders().filter((option) => !blockedFolders.has(option.id) && sameLibrary(library.folders.find((item) => item.id === option.id), existing)),
     ];
     setOptions(document.getElementById("remote-library-destination"), destinations, "");
     document.getElementById("remote-library-bulk-summary").textContent =
-      `${selectedHosts.size} host${selectedHosts.size === 1 ? "" : "s"} and ${selectedFolders.size} folder${selectedFolders.size === 1 ? "" : "s"} selected. Choose a location, a credential behavior, or both.`;
+      `${selected.length} item${selected.length === 1 ? "" : "s"} selected across pages and searches. Only the changes you choose will be applied.`;
+    bulkForm.querySelectorAll("[data-bulk-value]").forEach((input) => {
+      input.value = "";
+      const field = input.dataset.bulkValue;
+      input.disabled = field === "port" ? selected.some((item) => item.kind !== "host" || item.protocol === "console") : field.startsWith("allow_") ? selected.some((item) => item.kind !== "host" || item.protocol !== "ssh") : false;
+    });
     document.getElementById("remote-library-change-location").checked = false;
     document.getElementById("remote-library-change-credential").checked = false;
     bulkForm.querySelector('input[name="bulk_credential_mode"][value="inherit"]').checked = true;
     const none = bulkForm.querySelector('input[name="bulk_credential_mode"][value="none"]');
-    none.disabled = [...selectedHosts].some((hostId) => {
-      const host = library.hosts.find((item) => item.id === hostId);
-      return !["telnet", "console"].includes(host?.protocol);
-    });
+    none.disabled = selected.some((item) => item.kind === "host" && !["telnet", "console"].includes(item.protocol));
     setStatus("remote-library-bulk-status", "");
+    if (bulkTarget) document.getElementById("remote-library-change-location").checked = true;
     syncBulkEditor();
     openDialog(bulkDialog);
   }
@@ -1342,16 +1474,25 @@
     event.preventDefault();
     const changeLocation = document.getElementById("remote-library-change-location").checked;
     const changeCredential = document.getElementById("remote-library-change-credential").checked;
-    if (!changeLocation && !changeCredential) {
+    const changes = {};
+    bulkForm.querySelectorAll("[data-bulk-value]").forEach((input) => {
+      if (input.disabled || input.value === "") return;
+      const field = input.dataset.bulkValue;
+      changes[field] = field === "port" ? Number(input.value) : field === "visibility" ? input.value : input.value === "true";
+    });
+    if (!changeLocation && !changeCredential && !Object.keys(changes).length) {
       setStatus("remote-library-bulk-status", "Choose at least one change to apply.");
       return;
     }
+    if (changes.mso_enabled === false && !window.confirm("Turn MSO off for the selected items? Keep these copies locally and remove their shared copies from the fleet.")) return;
+    const selected = bulkItems();
     try {
       await mutate(manager.dataset.bulkUrl, {
         method: "POST",
         body: {
-          host_ids: [...selectedHosts],
-          folder_ids: [...selectedFolders],
+          ...changes,
+          host_ids: selected.filter((item) => item.kind === "host").map((item) => item.id),
+          folder_ids: selected.filter((item) => item.kind === "folder").map((item) => item.id),
           change_location: changeLocation,
           destination_id: document.getElementById("remote-library-destination").value,
           change_credential: changeCredential,
@@ -1360,6 +1501,7 @@
         },
       });
       closeEditor(bulkDialog, true);
+      if (bulkTarget) { bulkTarget = null; return; }
       selectionMode = false;
       selectedHosts.clear();
       selectedFolders.clear();

@@ -4,9 +4,26 @@ Remote Terminal loads 100 visible hosts per page. Previous/Next navigate the
 name-sorted inventory; search runs across all visible saved hosts, including
 connection details, notes, visible folder names, and available credential labels.
 Folder badges say how many hosts are shown on the current page. The total host
-count remains visible. Page/search changes clear bulk selections so an operation
-cannot accidentally retain selections hidden on another page. Editing a folder
-still applies its normal inherited policy to all its descendants.
+count remains visible. Selections stay with this browser tab across paging and searches (up to 500 items).
+**Visible** selects only the expanded rows currently shown; it does not select a
+folder’s contents. **Edit selected** includes a review list covering other pages.
+**Clear** or leaving Select mode clears the selection; a page reload also resets it.
+
+Bulk edits default to **Keep existing**. Choose only the changes needed: move,
+credentials, availability, network port, SSH trust/legacy options, or MSO when
+connected to a Mainframe. Port changes require only SSH/Telnet hosts; SSH options
+require only SSH hosts. Folder availability and credentials affect inheriting
+descendants, while explicit overrides stay unchanged. All selected items must
+belong to one owner. Permissions, dependency checks and MSO conflicts are checked
+again at save time; a rejection rolls back the entire batch. MSO sharing includes
+required ancestors and credentials; private objects remain local. To stop sharing
+a folder, unshare its shared dependents first or include them in the selection.
+
+Host and folder row menus offer Rename, Move, Edit, and Delete; owners also see
+Duplicate. Rename changes only the label, and Move opens a one-item bulk editor
+without replacing your existing selection. Only empty folders can be deleted.
+
+![Remote Terminal bulk editor with opt-in changes](images/remote-terminal-bulk-edit.png)
 
 The web page, library refreshes, and mutation responses use the same bounded
 host projection. `/tools/remote-terminal/library` accepts `host_page` and
