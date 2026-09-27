@@ -1157,6 +1157,12 @@ class RemoteConnectionStore:
         destination_id: str | None = None,
         credential_mode: str | None = None,
         credential_id: str = "",
+        visibility: str | None = None,
+        port: int | None = None,
+        allow_unknown_hosts: bool | None = None,
+        allow_legacy_algorithms: bool | None = None,
+        name: str | None = None,
+        sharing_change: bool = False,
     ) -> dict[str, int]:
         clean_host_ids = list(dict.fromkeys(str(item) for item in host_ids if item))
         clean_folder_ids = list(
@@ -1166,8 +1172,10 @@ class RemoteConnectionStore:
             raise RemoteConnectionError("Select at least one host or folder.")
         if len(clean_host_ids) + len(clean_folder_ids) > 500:
             raise RemoteConnectionError("Select no more than 500 items at once.")
-        if destination_id is None and credential_mode is None:
-            raise RemoteConnectionError("Choose a location or credential change.")
+        changes = (destination_id, credential_mode, visibility, port,
+                   allow_unknown_hosts, allow_legacy_algorithms, name)
+        if all(value is None for value in changes) and not sharing_change:
+            raise RemoteConnectionError("Choose at least one change to apply.")
 
         now = time.time()
         with self._connect() as connection:
@@ -1179,6 +1187,34 @@ class RemoteConnectionStore:
                 self._require_folder(connection, folder_id, user_id)
                 for folder_id in clean_folder_ids
             ]
+
+            if name is not None:
+                if len(hosts) + len(folders) != 1:
+                    raise RemoteConnectionError("Rename one item at a time.")
+                clean_name = self._name(name, "Host name" if hosts else "Folder name")
+                item = (hosts or folders)[0]
+                if hosts:
+                    self._require_unique_host_name(connection, user_id, str(item["folder_id"]), clean_name, exclude_id=item["id"])
+                else:
+                    self._require_unique_folder_name(connection, user_id, str(item["parent_id"]), clean_name, exclude_id=item["id"])
+                table = "hosts" if hosts else "folders"
+                connection.execute(f"UPDATE remote_connection_{table} SET name=?, updated_at=? WHERE id=? AND user_id=?", (clean_name, now, item["id"], user_id))
+
+            if port is not None:
+                if type(port) is not int or not 1 <= port <= 65535:
+                    raise RemoteConnectionError("Port must be a whole number between 1 and 65535.")
+                if not hosts or folders or any(row["protocol"] == "console" for row in hosts):
+                    raise RemoteConnectionError("Port changes require only SSH or Telnet hosts to be selected.")
+            for value in (allow_unknown_hosts, allow_legacy_algorithms):
+                if value is not None:
+                    if type(value) is not bool:
+                        raise RemoteConnectionError("SSH options must be on or off.")
+                    if not hosts or folders or any(row["protocol"] != "ssh" for row in hosts):
+                        raise RemoteConnectionError("SSH option changes require only SSH hosts to be selected.")
+            for key, value in (("port", port), ("allow_unknown_hosts", allow_unknown_hosts), ("allow_legacy_algorithms", allow_legacy_algorithms)):
+                if value is not None:
+                    for host in hosts:
+                        connection.execute(f"UPDATE remote_connection_hosts SET {key}=?, updated_at=? WHERE id=? AND user_id=?", (value, now, host["id"], user_id))
 
             if destination_id is not None:
                 self._require_folder(
@@ -1224,6 +1260,11 @@ class RemoteConnectionStore:
                         """,
                         (destination_id, now, host_id, user_id),
                     )
+
+            if visibility is not None:
+                for kind, items in (("host", hosts), ("folder", folders)):
+                    for item in items:
+                        self.set_visibility(kind, item["id"], user_id=user_id, visibility=visibility)
 
             if credential_mode is not None:
                 clean_mode, clean_credential_id = self._folder_credential_assignment(

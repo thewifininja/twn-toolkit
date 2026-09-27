@@ -552,7 +552,13 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 folder_ids=list(payload.get("folder_ids", [])),
                 destination_id=destination_id,
                 credential_mode=credential_mode,
-                credential_id=str(payload.get("credential_id", "")),
+                credential_id=str(payload.get("credential_id", "")) if credential_mode == "credential" else "",
+                visibility=payload.get("visibility"),
+                port=payload.get("port"),
+                allow_unknown_hosts=payload.get("allow_unknown_hosts"),
+                allow_legacy_algorithms=payload.get("allow_legacy_algorithms"),
+                name=payload.get("name"),
+                sharing_change="mso_enabled" in payload,
                 is_admin=bool(user.get("is_admin")),
             )
         except (RemoteConnectionError, TypeError, ValueError) as exc:
@@ -567,6 +573,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
                 "folders": changed["folders"],
                 "location changed": destination_id is not None,
                 "credential changed": credential_mode is not None,
+                "fields changed": ", ".join(key for key in ("name", "visibility", "port", "allow_unknown_hosts", "allow_legacy_algorithms", "mso_enabled") if key in payload),
             },
         )
         return _library_response(user["id"])
@@ -1628,21 +1635,36 @@ def _library_mutation(handler):
                 if status >= 400:
                     raise _LibraryMutationRejected()
                 if 'mso_enabled' in payload:
-                    kind = next((kind for kind in COLLECTIONS if handler.__name__ in {'create_remote_terminal_'+kind,'update_remote_terminal_'+kind}), None)
-                    if not kind:
-                        raise RemoteConnectionError('This action cannot change MSO sharing.')
-                    identifier = kwargs.get(kind+'_id') or (args[0] if args else '')
-                    if not identifier:
+                    if handler.__name__ == 'bulk_update_remote_terminal_library':
+                        targets = [('host', identifier) for identifier in dict.fromkeys(payload.get('host_ids', []))]
+                        # Withdraw children before parents, independent of selection order.
                         with store._connect() as db:
-                            created = {r['id'] for r in db.execute(f'SELECT id FROM remote_connection_{COLLECTIONS[kind]}')} - ids[kind]
-                        if len(created)!=1:
-                            raise RemoteConnectionError('The saved terminal object could not be identified.')
-                        identifier = created.pop()
-                    if (kind,identifier) in before and payload.get('mso_revision')!=revision:
-                        raise RemoteConnectionError('This shared terminal object changed. Reload the library before editing it.')
-                    require_usable(store,kind,identifier,action='changing MSO')
-                    user=_current_user()
-                    set_sharing(store,kind,identifier,payload['mso_enabled'],user_id=user['id'],is_admin=bool(user.get('is_admin')))
+                            parents = {row['id']: row['parent_id'] for row in db.execute('SELECT id,parent_id FROM remote_connection_folders')}
+                        def depth(identifier):
+                            seen = set()
+                            while identifier in parents and identifier not in seen:
+                                seen.add(identifier)
+                                identifier = parents[identifier]
+                            return len(seen)
+                        targets += [('folder', identifier) for identifier in sorted(set(payload.get('folder_ids', [])), key=depth, reverse=True)]
+                    else:
+                        kind = next((kind for kind in COLLECTIONS if handler.__name__ in {'create_remote_terminal_'+kind,'update_remote_terminal_'+kind}), None)
+                        if not kind:
+                            raise RemoteConnectionError('This action cannot change MSO sharing.')
+                        identifier = kwargs.get(kind+'_id') or (args[0] if args else '')
+                        if not identifier:
+                            with store._connect() as db:
+                                created = {r['id'] for r in db.execute(f'SELECT id FROM remote_connection_{COLLECTIONS[kind]}')} - ids[kind]
+                            if len(created)!=1:
+                                raise RemoteConnectionError('The saved terminal object could not be identified.')
+                            identifier = created.pop()
+                        targets = [(kind, identifier)]
+                    user = _current_user()
+                    for kind, identifier in targets:
+                        if (kind,identifier) in before and payload.get('mso_revision') != revision:
+                            raise RemoteConnectionError('This shared terminal object changed. Reload the library before editing it.')
+                        require_usable(store,kind,identifier,action='changing MSO')
+                        set_sharing(store,kind,identifier,payload['mso_enabled'],user_id=user['id'],is_admin=bool(user.get('is_admin')))
                 validate_changes(store,before,payload.get('mso_revision'),revision)
                 body=response[0] if isinstance(response,tuple) else response
                 data=body.get_json()

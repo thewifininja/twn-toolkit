@@ -57,7 +57,7 @@
     <div class="remote-connection-selection-bar" data-library-selection-bar hidden>
       <strong id="remote-connection-selection-count">0 selected</strong>
       <span class="button-row">
-        <button class="secondary compact" type="button" data-select-visible title="Select every visible item">All</button>
+        <button class="secondary compact" type="button" data-select-visible title="Select every visible item">Visible</button>
         <button class="secondary compact" type="button" data-clear-selection disabled>Clear</button>
         <button class="compact" type="button" data-edit-selection disabled>Edit selected</button>
       </span>
@@ -324,6 +324,7 @@
   <form class="form remote-terminal-dialog-form" id="remote-library-bulk-form" data-unsaved-form><fieldset class="remote-editor-lock" data-editor-lock>
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-library-bulk-title">Edit selected items</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
     <p class="remote-terminal-dialog-intro" id="remote-library-bulk-summary">Choose a location, a credential behavior, or both. Explicit child overrides remain unchanged unless they are selected.</p>
+    <details class="remote-library-selection-review"><summary>Review selection (including other pages)</summary><ul id="remote-library-selected-items"></ul></details>
     <section class="remote-library-bulk-section">
       <label class="check remote-library-bulk-enable"><input id="remote-library-change-location" type="checkbox"><span><strong>Move selected items</strong><small>Hosts move into the destination folder; folders and their contents move as a unit.</small></span></label>
       <label data-bulk-location-fields hidden>Destination folder<select id="remote-library-destination"></select></label>
@@ -340,8 +341,25 @@
         <label data-bulk-saved hidden>Saved credential<select id="remote-library-credential"></select></label>
       </fieldset>
     </section>
+    <section class="remote-library-bulk-section">
+      <label>Availability<select id="remote-library-visibility" data-bulk-value="visibility"><option value="">Keep existing</option><option value="inherit">Inherit</option><option value="private">Private</option><option value="admins_only">Admins only</option><option value="global">Global</option></select></label>
+      <p class="muted">Folder availability and credentials also affect descendants that inherit them. Explicit child overrides stay unchanged.</p>
+      <label>Port · SSH / Telnet hosts only<input id="remote-library-port" data-bulk-value="port" type="number" min="1" max="65535" placeholder="Keep existing"></label>
+      <label>Learn host key on first connect · SSH hosts only<select data-bulk-value="allow_unknown_hosts"><option value="">Keep existing</option><option value="true">Allow</option><option value="false">Require known key</option></select></label>
+      <label>Legacy SSH compatibility · SSH hosts only<select data-bulk-value="allow_legacy_algorithms"><option value="">Keep existing</option><option value="true">Enable</option><option value="false">Disable</option></select></label>
+      {% if mso_available %}<label>MSO<select data-bulk-value="mso_enabled"><option value="">Keep existing</option><option value="true">Share</option><option value="false">Keep local only</option></select></label><p class="muted">Sharing includes required folders and credentials. Private objects stay local. Turning MSO off removes shared copies from the fleet; shared dependents must also be selected or unshared first.</p>{% endif %}
+    </section>
     <p class="tool-status" id="remote-library-bulk-status" role="status"></p>
     <footer><span></span><button class="secondary" type="button" data-dialog-close>Cancel</button><button type="submit">Apply changes</button></footer>
+  </fieldset></form>
+</dialog>
+
+<dialog class="remote-terminal-dialog" id="remote-library-rename-dialog" aria-labelledby="remote-library-rename-title">
+  <form class="form remote-terminal-dialog-form" id="remote-library-rename-form" data-unsaved-form><fieldset class="remote-editor-lock" data-editor-lock>
+    <header><h2 id="remote-library-rename-title">Rename</h2><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
+    <label>Name<input id="remote-library-rename-name" required maxlength="100"></label>
+    <p class="tool-status" role="status"></p>
+    <footer><span></span><button class="secondary" type="button" data-dialog-close>Cancel</button><button type="submit">Save name</button></footer>
   </fieldset></form>
 </dialog>
 

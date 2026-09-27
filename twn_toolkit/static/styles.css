@@ -17286,11 +17286,6 @@ th {
   margin: 0;
 }
 
-.remote-connection-explorer.selection-mode .remote-connection-folder-menu-wrap,
-.remote-connection-explorer.selection-mode .remote-connection-host-manage {
-  visibility: hidden;
-}
-
 .remote-connection-explorer.selection-mode .remote-connection-host-connect {
   cursor: pointer;
 }
@@ -22429,3 +22424,21 @@ body.remote-terminal-resizing * {
     min-height: 42px;
   }
 }
+
+/* Connection actions share the same menu in host and folder rows. */
+.remote-connection-host > .remote-connection-folder-menu {
+  grid-column: 1 / -1;
+}
+.remote-library-selection-review ul {
+  max-height: 12rem;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+.remote-library-selection-review li {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-block: 0.5rem;
+}
+.remote-library-selection-review li > span { min-width: 0; }
