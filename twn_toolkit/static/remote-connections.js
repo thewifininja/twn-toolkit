@@ -604,7 +604,12 @@
           (item.kind === "host" ? selectedHosts : selectedFolders).delete(item.id);
           updateSelectionBar();
           renderTree();
+          if (bulkForm.dataset.mixedOwners === "true" && bulkItems().length) {
+            openBulkEditor();
+            return;
+          }
           renderSelectedItems(bulkItems());
+          syncBulkEligibility();
           document.getElementById("remote-library-bulk-summary").textContent = `${bulkItems().length} items selected across pages and searches. Only the changes you choose will be applied.`;
           bulkForm.querySelector('button[type="submit"]').disabled = !bulkItems().length || new Set(bulkItems().map((row) => row.user_id)).size !== 1;
         });
@@ -1426,9 +1431,12 @@
     const existing = selected[0];
     renderSelectedItems(selected);
     bulkForm.querySelector('button[type="submit"]').disabled = false;
-    if (new Set(selected.map((item) => item.user_id)).size !== 1) {
+    const mixedOwners = new Set(selected.map((item) => item.user_id)).size !== 1;
+    bulkForm.dataset.mixedOwners = String(mixedOwners);
+    bulkForm.querySelectorAll(".remote-library-bulk-section").forEach((section) => { section.hidden = mixedOwners; });
+    if (mixedOwners) {
       bulkForm.querySelector('button[type="submit"]').disabled = true;
-      document.getElementById("remote-library-bulk-summary").textContent = "These items belong to different owners. Clear the selection and choose items from one library.";
+      document.getElementById("remote-library-bulk-summary").textContent = "These items belong to different owners. Review the selection and choose items from one library.";
       setStatus("remote-library-bulk-status", "Select items from one owner's library at a time.");
       openDialog(bulkDialog);
       return;
@@ -1443,20 +1451,29 @@
     setOptions(document.getElementById("remote-library-destination"), destinations, "");
     document.getElementById("remote-library-bulk-summary").textContent =
       `${selected.length} item${selected.length === 1 ? "" : "s"} selected across pages and searches. Only the changes you choose will be applied.`;
-    bulkForm.querySelectorAll("[data-bulk-value]").forEach((input) => {
-      input.value = "";
-      const field = input.dataset.bulkValue;
-      input.disabled = field === "port" ? selected.some((item) => item.kind !== "host" || item.protocol === "console") : field.startsWith("allow_") ? selected.some((item) => item.kind !== "host" || item.protocol !== "ssh") : false;
-    });
+    bulkForm.querySelectorAll("[data-bulk-value]").forEach((input) => { input.value = ""; });
     document.getElementById("remote-library-change-location").checked = false;
     document.getElementById("remote-library-change-credential").checked = false;
     bulkForm.querySelector('input[name="bulk_credential_mode"][value="inherit"]').checked = true;
-    const none = bulkForm.querySelector('input[name="bulk_credential_mode"][value="none"]');
-    none.disabled = selected.some((item) => item.kind === "host" && !["telnet", "console"].includes(item.protocol));
+    syncBulkEligibility();
     setStatus("remote-library-bulk-status", "");
     if (bulkTarget) document.getElementById("remote-library-change-location").checked = true;
     syncBulkEditor();
     openDialog(bulkDialog);
+  }
+
+  function syncBulkEligibility() {
+    const selected = bulkItems();
+    bulkForm.querySelectorAll("[data-bulk-value]").forEach((input) => {
+      const field = input.dataset.bulkValue;
+      input.disabled = field === "port"
+        ? selected.some((item) => item.kind !== "host" || item.protocol === "console")
+        : field.startsWith("allow_")
+          ? selected.some((item) => item.kind !== "host" || item.protocol !== "ssh")
+          : false;
+    });
+    bulkForm.querySelector('input[name="bulk_credential_mode"][value="none"]').disabled =
+      selected.some((item) => item.kind === "host" && !["telnet", "console"].includes(item.protocol));
   }
 
   function syncBulkEditor() {
