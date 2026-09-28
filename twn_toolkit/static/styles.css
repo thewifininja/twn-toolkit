@@ -16910,9 +16910,9 @@ th {
 }
 
 .remote-connection-explorer {
-  align-content: start;
   container-type: inline-size;
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   max-height: calc(100vh - var(--topbar-height) - 42px);
   min-height: 0;
@@ -16920,6 +16920,10 @@ th {
   padding: 16px;
   position: sticky;
   top: calc(var(--topbar-height) + 18px);
+}
+
+.remote-connection-explorer > * {
+  flex: 0 0 auto;
 }
 
 .remote-connection-explorer > header,
@@ -17008,7 +17012,8 @@ th {
   align-content: start;
   display: grid;
   gap: 4px;
-  max-height: calc(100vh - var(--topbar-height) - 250px);
+  flex: 1 1 auto;
+  max-height: none;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
@@ -18297,6 +18302,18 @@ th {
   .remote-connection-explorer {
     max-height: none;
     min-height: 0;
+    position: static;
+  }
+
+  .remote-connection-tree {
+    max-height: 360px;
+  }
+}
+
+/* Short windows use page scrolling so the controls cannot consume the list. */
+@media (max-height: 600px) {
+  .remote-connection-explorer {
+    max-height: none;
     position: static;
   }
 
