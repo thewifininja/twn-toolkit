@@ -5,15 +5,27 @@ test, saved device profiles, a working automation, local file services, and
 basic administration. The searchable **Help** page inside the toolkit contains
 the full field guide and release notes.
 
-## Upgrading to v0.26.2
+## Upgrading to v0.27.0
 
-Use the built-in updater on Mainframe and Agents, then reload browser pages.
-Open a completed DNS run and choose **Export CSV** for all comparison rows or
-per-resolver load-test statistics. Upgrade the instance holding the run; saved
-results are exported without repeating DNS traffic.
-Existing case reports that crashed after a DNS load test can be opened again;
-the saved results do not need to be recreated. This patch adds no database migration.
-See the [release compatibility notes](docs/release-0.26.2-checklist.md), including
+Save unsaved library drafts, finish active jobs and terminal sessions, then use the
+built-in updater on Mainframe and Agents and reload browser pages. Update the
+instance that executes the tool as well as the Mainframe used to access it.
+This release updates urllib3 to 2.8.0 and Werkzeug to 3.1.9 for security fixes;
+the updater installs the verified dependency locks. No new database schema or
+service changes are required.
+
+In Bulk SSH, use **Save a copy** to copy current edits or **Save & add to run**
+to assemble a run without executing it. Action drafts survive switching editors
+within the page; run order survives saves and renames. Long scripts and quoted
+multiline commands are supported; arbitrary expect dialogs and heredocs are not.
+
+In Remote Terminal, use **Select** across searches/pages and review the selection
+in **Edit selected**. Choose only the settings to change; others keep their values.
+Host/folder menus provide direct Rename, Move, Edit, Duplicate and Delete actions.
+Selections and drafts remain page-local and are cleared by a reload.
+
+Existing DNS CSV exports and the case-report repair remain included. See the
+[release compatibility notes](docs/release-0.27.0-checklist.md), including existing
 Fabric job rollback precautions.
 
 ## Fleet sharing in v0.26.0
