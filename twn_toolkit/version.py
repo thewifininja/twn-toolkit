@@ -1,6 +1,32 @@
-APP_VERSION = "0.26.2"
+APP_VERSION = "0.27.0"
 
 RELEASE_NOTES = (
+    {
+        "version": "0.27.0",
+        "date": "2026-10-16",
+        "title": "Bulk SSH and Remote Terminal library workflows",
+        "summary": "Build longer SSH scripts, preserve action drafts and run order, and manage terminal libraries across searches and pages.",
+        "groups": (
+            {"title": "Bulk SSH", "items": (
+                "Remove command-count, command-length and summed-timeout preflight caps; retain per-command timeouts, configured worker deadlines, cancellation and output limits.",
+                "Support quoted multiline commands, including FortiGate certificate pastes. This is not a general expect-script or heredoc interpreter.",
+                "Save named copies from current edits, optionally include saved actions when copying a matrix, and use Save & add to run without starting SSH.",
+                "Preserve action drafts while switching editors and retain assembled run order across saves and action renames. Align action fields and execution confirmation controls.",
+            )},
+            {"title": "Remote Terminal", "items": (
+                "Retain selections across searches and pages in the current browser tab, with a review list and individual removal before applying bulk changes.",
+                "Bulk-edit location, credentials, availability, network port, SSH trust and legacy settings, and MSO sharing. Unselected settings keep their existing values.",
+                "Offer Rename, Move, Edit, owner-only Duplicate, and Delete from host and folder row menus. Moving one row preserves an existing bulk selection.",
+                "Preserve ownership, private-object protection, credential dependencies and stale-MSO checks; rejected batches leave saved data unchanged.",
+                "Keep the final rows and menus reachable in expanded connection lists, including Select mode, short windows and enlarged text.",
+            )},
+            {"title": "Upgrade", "items": (
+                "Update urllib3 to 2.8.0 and Werkzeug to 3.1.9 for upstream security fixes; no new database schema or service changes. Upgrade Mainframe and Agents to use the new behavior on each execution target, then reload browser pages.",
+                "Drafts and selections are page-local and do not survive a reload. Save drafts before upgrading; finish active jobs and terminal sessions before restarting an instance.",
+                "Includes the existing DNS load-test case-report fix and retained DNS CSV exports from v0.26.1 and v0.26.2. Switch Loop Inspector remains experimental.",
+            )},
+        ),
+    },
     {
         "version": "0.26.2",
         "date": "2026-09-14",

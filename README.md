@@ -13,7 +13,15 @@ conditions, response pipelines, retained output, access control, and an
 operational dashboard—without requiring a separate database server or cloud
 service.
 
-Current release: **v0.26.2**
+Current release: **v0.27.0**
+
+v0.27.0 improves [Bulk SSH library editing and run assembly](docs/bulk-ssh-workflow.md)
+with copies from current edits, retained action drafts and run order, and quoted
+multiline command input without the previous command-count limit.
+[Remote Terminal library editing](docs/library-report-pages.md) now keeps selections
+across searches/pages, adds broader opt-in bulk edits and direct row actions, and
+fixes clipped bottom rows in expanded lists. Security updates pin urllib3 2.8.0
+and Werkzeug 3.1.9; no new database migration is required. Save page-local drafts before upgrading and reload afterward.
 
 v0.26.2 adds **Export CSV** to completed DNS runs: download all comparison
 results or per-resolver load-test statistics from the saved snapshot.
@@ -37,7 +45,7 @@ Shared Save controls and compact MSO switches follow the application's themes.
 Use the built-in updater on Mainframe and Agents, then reload open browser pages.
 The verified bundle retains the v0.9.0 minimum direct-upgrade boundary; see the
 existing updater exceptions below for older service installations.
-[Release notes and compatibility](docs/release-0.26.2-checklist.md).
+[Release notes and compatibility](docs/release-0.27.0-checklist.md).
 
 > [!CAUTION]
 > This software can send packets, test credentials, change managed devices,
