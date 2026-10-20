@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from datetime import datetime, timedelta, timezone
 import json
 import os
 import ssl
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509.oid import NameOID
 
@@ -209,6 +211,21 @@ class EnrollmentServer:
         return MsoStore(self.instance_path).exchange(node_id, payload)
 
     def heartbeat(
+        self, certificate_der: bytes | None, payload: dict[str, Any], address: str,
+        *, control_only: bool = False,
+    ) -> dict[str, Any]:
+        result = self._heartbeat(certificate_der, payload, address, control_only=control_only)
+        if payload.get("supports_certificate_renewal") is True:
+            certificate = x509.load_der_x509_certificate(certificate_der)
+            if certificate.not_valid_after_utc <= datetime.now(timezone.utc) + timedelta(days=7):
+                agent_id = self._approved_certificate_agent(certificate_der)
+                agent = self.agent_store.get(agent_id)
+                result["client_certificate"] = self.pki_store.issue_agent_certificate(
+                    agent_id=agent_id, public_key=agent["public_key"]
+                )
+        return result
+
+    def _heartbeat(
         self, certificate_der: bytes | None, payload: dict[str, Any], address: str,
         *, control_only: bool = False,
     ) -> dict[str, Any]:
@@ -483,7 +500,7 @@ class EnrollmentClient:
     ) -> dict[str, Any]:
         if not self.enrolled():
             raise EnrollmentTransportError("This agent has not completed enrollment.")
-        return self._request(
+        response = self._request(
             "POST",
             "/v1/agent-status" if control_only else "/v1/heartbeat",
             {
@@ -497,6 +514,7 @@ class EnrollmentClient:
                 "activation_id": activation_id,
                 "job_protocol": JOB_PROTOCOL_VERSION,
                 "supports_poll_retry": True,
+                "supports_certificate_renewal": True,
                 "results": results or [],
                 "wait_seconds": max(0.0, min(float(wait_seconds), MAX_LONG_POLL_SECONDS)),
             },
@@ -506,6 +524,32 @@ class EnrollmentClient:
                 max(0.0, min(float(wait_seconds), MAX_LONG_POLL_SECONDS)) + 5,
             ),
         )
+
+        if "client_certificate" in response:
+            self._install_renewed_certificate(response["client_certificate"])
+        return response
+
+    def _install_renewed_certificate(self, pem: str) -> None:
+        try:
+            certificate = x509.load_pem_x509_certificate(pem.encode("ascii"))
+            ca = x509.load_pem_x509_certificate(self.ca_path.read_bytes())
+            certificate.verify_directly_issued_by(ca)
+            identity = self.identity_store.load_or_create()
+            public_key = certificate.public_key().public_bytes(
+                serialization.Encoding.Raw, serialization.PublicFormat.Raw
+            ).hex()
+            names = certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
+            now = datetime.now(timezone.utc)
+            if (public_key != identity["public_key"]
+                or len(names) != 1
+                or names[0].value != f"agent_{identity['fingerprint'][:32]}"
+                or not certificate.not_valid_before_utc <= now < certificate.not_valid_after_utc):
+                raise ValueError("Renewed certificate does not match this agent or is not valid.")
+            current = x509.load_pem_x509_certificate(self.certificate_path.read_bytes())
+            if certificate.not_valid_after_utc > current.not_valid_after_utc:
+                _private_write(self.certificate_path, pem.encode("ascii"))
+        except (ValueError, TypeError, AttributeError, InvalidSignature) as exc:
+            raise EnrollmentTransportError("Mainframe returned an invalid renewed client certificate.") from exc
 
     def interactive(
         self, results: list[dict[str, Any]] | None = None, *,
@@ -553,6 +597,13 @@ class EnrollmentClient:
     ) -> dict[str, Any]:
         data = None if payload is None else json.dumps(payload).encode("utf-8")
         if authenticated:
+            certificate = x509.load_pem_x509_certificate(self.certificate_path.read_bytes())
+            if certificate.not_valid_after_utc <= datetime.now(timezone.utc):
+                raise EnrollmentTransportError(
+                    "This Agent's client certificate has expired. Open Mainframe enrollment, "
+                    "revoke and remove its old Agent record, then use Reset local enrollment "
+                    "and enroll again. Keep the device identity and MSO data intact."
+                )
             context = ssl.create_default_context(cafile=str(self.ca_path))
             context.load_cert_chain(
                 certfile=str(self.certificate_path), keyfile=str(self.identity_store.path)
@@ -596,13 +647,19 @@ class EnrollmentClient:
                     finally:
                         exc.close()
                     raise EnrollmentTransportError(f"MSO sync failed (HTTP {exc.code}): {str(detail)[:240] or exc.reason}") from exc
-                exc.close()
+                try:
+                    raw = exc.read(MAX_ENROLLMENT_REQUEST_BYTES + 1)
+                    detail = json.loads(raw).get("error", "") if len(raw) <= MAX_ENROLLMENT_REQUEST_BYTES else ""
+                except (OSError, ValueError, AttributeError):
+                    detail = ""
+                finally:
+                    exc.close()
                 if path == "/v1/agent-status" and exc.code == 404:
                     raise EnrollmentTransportError(
                         "Upgrade and restart the Mainframe worker for independent Agent status reporting."
                     ) from exc
                 raise EnrollmentTransportError(
-                    f"Mainframe enrollment request failed: {exc}"
+                    f"Mainframe request failed (HTTP {exc.code}): {str(detail)[:240] or exc.reason}"
                 ) from exc
             except (OSError, urllib.error.URLError) as exc:
                 last_error = exc
