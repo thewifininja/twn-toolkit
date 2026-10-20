@@ -298,3 +298,23 @@ requests and Agent status. Connected Agents and Settings have separate role-awar
 tabs. See the [MSO guide](mainframe-synced-objects.md) for supported libraries,
 visibility, offline changes, deletion, compatibility and recovery limits, and
 [terminal streaming](terminal-streaming.md) for the on-demand outbound relay.
+
+## Agent certificate renewal
+
+Agent client certificates last 30 days. Updated Agents advertise renewal support
+on their authenticated work and control heartbeats. The Mainframe returns a
+replacement when the presented certificate has seven days or less remaining.
+The Agent checks the pinned CA signature, device identity, and validity dates
+before atomically replacing only its client certificate. Device keys, Agent IDs,
+MSO object IDs, revisions, pending operations, and synchronization cursors remain
+unchanged. Both the Mainframe and Agent must run a version supporting renewal;
+older peers continue communicating but do not gain automatic renewal.
+
+An Agent offline until its certificate expires cannot authenticate to renew.
+Its status explains the recovery: open enrollment on the same Mainframe, revoke
+and remove its old Agent trust record, reset local enrollment on the Agent,
+request enrollment, compare pairing codes, approve, and check approval.
+Keep Agent mode, the existing device identity, and the MSO database intact.
+Do not detach the MSO fleet or change roles as part of certificate recovery.
+Enrollment failures include the bounded server error message, so an existing
+approved/revoked identity is distinguishable from a routing problem.
