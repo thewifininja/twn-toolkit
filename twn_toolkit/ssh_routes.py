@@ -163,7 +163,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                 except (ToolInputError, TypeError, ValueError) as exc:
                     error = str(exc) if str(exc) else "Enter a valid SSH port."
                 suppress_audit_event()
-            elif action in {"save_host_matrix", "save_host_matrix_copy"}:
+            elif action in {"save_host_matrix", "save_host_matrix_copy", "save_host_matrix_continue"}:
                 try:
                     if action == "save_host_matrix_copy":
                         host_matrix, existed = _save_host_matrix_copy(form)
@@ -334,6 +334,8 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             preview=preview,
             results=results,
         )
+        if request.form.get("action") == "save_host_matrix_continue" and success and not error:
+            active_workspace = "actions"
         if request.form.get("action") == "save_matrix_action_and_add" and success and not error:
             active_workspace = "run"
         return render_template(
