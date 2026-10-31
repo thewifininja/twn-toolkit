@@ -22152,7 +22152,10 @@ body.remote-terminal-resizing * {
 }
 
 .multi-ssh-runbook {
+  container: ssh-runbook / inline-size;
+  min-width: 0;
   display: grid;
+  grid-auto-rows: max-content;
   gap: 6px;
   max-height: min(54vh, 440px);
   overflow-y: auto;
@@ -22171,6 +22174,7 @@ body.remote-terminal-resizing * {
 }
 
 .multi-ssh-runbook-row > span:nth-of-type(2) {
+  overflow-wrap: anywhere;
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -22223,6 +22227,8 @@ body.remote-terminal-resizing * {
 }
 
 .multi-ssh-preflight-list > div > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
   display: grid;
   gap: 2px;
 }
@@ -22361,6 +22367,23 @@ body.remote-terminal-resizing * {
   .multi-ssh-runbook-row > :is(.pill, .compact-actions) {
     grid-column: 2;
     justify-self: start;
+  }
+}
+
+/* A desktop sidebar and the run's second column can leave a narrow action
+   list even when the viewport is wide. Reflow to the list's available width. */
+@container ssh-runbook (max-width: 460px) {
+  .multi-ssh-runbook-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .multi-ssh-runbook-row > :is(.pill, .compact-actions) {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .multi-ssh-runbook-row .compact-actions {
+    flex-wrap: wrap;
   }
 }
 
