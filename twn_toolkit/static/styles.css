@@ -22459,3 +22459,25 @@ body.remote-terminal-resizing * {
   margin-block: 0.5rem;
 }
 .remote-library-selection-review li > span { min-width: 0; }
+
+/* Keep the first task and the final action visible in the existing workspace. */
+.multi-ssh-intro { align-items: center; display: flex; justify-content: space-between; gap: 12px; }
+.multi-ssh-intro p { margin: 0; }
+.multi-ssh-matrix-facts { min-height: 0; }
+.remote-host-dialog .remote-terminal-dialog-form { padding-bottom: 0; }
+.remote-host-dialog .remote-terminal-dialog-footer-split {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding-block: 12px;
+}
+.remote-host-organization > summary,
+.investigation-team-panel > summary,
+.investigation-merge-entry > summary,
+.investigation-create-panel > summary { cursor: pointer; font-weight: 600; }
+.remote-host-organization[open] > summary,
+.investigation-team-panel[open] > summary,
+.investigation-merge-entry[open] > summary,
+.investigation-create-panel[open] > summary { margin-bottom: 16px; }

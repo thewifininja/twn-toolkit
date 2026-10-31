@@ -32,8 +32,10 @@
         </dl>
       </div>
     </section>
-  {% else %}
-    <section class="panel investigation-create-panel">
+  {% endif %}
+
+  {% if not open_investigation %}
+    <details class="panel investigation-create-panel" {% if not investigations %}open{% endif %}><summary>Start a new case</summary>
       {{ section_header("Start a case", "Give the work a durable name before running the first diagnostic.", "New case") }}
       <form method="post" action="{{ url_for('create_investigation') }}" class="form-grid investigation-create-form">
         <div class="investigation-create-fields">
@@ -53,22 +55,8 @@
           <button type="submit">Open case</button>
         </footer>
       </form>
-    </section>
+    </details>
   {% endif %}
-
-  <details class="panel investigation-import-panel">
-    <summary>
-      <span><strong>Import a portable case</strong><small>Transfer a complete case exported from another toolkit instance.</small></span>
-      <span aria-hidden="true">▾</span>
-    </summary>
-    <form method="post" action="{{ url_for('import_investigation_case') }}" enctype="multipart/form-data" class="investigation-import-form">
-      <label>Portable case archive
-        <input type="file" name="case_archive" accept=".twncase,application/zip" required>
-        <small>The archive and every evidence hash are verified before import. Original attribution is preserved; foreign users are not granted access.</small>
-      </label>
-      <button type="submit">Import case</button>
-    </form>
-  </details>
 
   <section class="panel investigation-library">
     {{ section_header("Case history", "Owned and shared cases remain available as a durable technical record.", "Accessible journal") }}
@@ -99,5 +87,23 @@
       {% call empty_state("No cases yet", "Start one above before beginning your next troubleshooting session.") %}{% endcall %}
     {% endif %}
   </section>
+
+
+
+  <details class="panel investigation-import-panel">
+    <summary>
+      <span><strong>Import a portable case</strong><small>Transfer a complete case exported from another toolkit instance.</small></span>
+      <span aria-hidden="true">▾</span>
+    </summary>
+    <form method="post" action="{{ url_for('import_investigation_case') }}" enctype="multipart/form-data" class="investigation-import-form">
+      <label>Portable case archive
+        <input type="file" name="case_archive" accept=".twncase,application/zip" required>
+        <small>The archive and every evidence hash are verified before import. Original attribution is preserved; foreign users are not granted access.</small>
+      </label>
+      <button type="submit">Import case</button>
+    </form>
+  </details>
+
+
 </div>
 {% endblock %}

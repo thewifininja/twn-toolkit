@@ -159,3 +159,33 @@ def test_new_action_save_selects_saved_action_despite_editor_query(workspace):
     assert not context['error']
     assert context['selected_action']['name'] == 'New action'
     assert context['action_editor']['original_name'] == 'New action'
+
+
+def test_save_hosts_continue_opens_commands_without_preview_or_execution(workspace):
+    app, client, store = workspace
+    with (rendered(app) as context,
+          patch('twn_toolkit.ssh_routes.run_ssh_host_plans') as execute,
+          patch('twn_toolkit.ssh_routes._enqueue_ssh') as enqueue):
+        response = client.post('/tools/multi-ssh', data={
+            'action': 'save_host_matrix_continue', 'workspace': 'hosts',
+            'host_matrix_name': 'New lab', 'matrix': 'Name | Host\nNew | new.example.test',
+        })
+    assert response.status_code == 200
+    assert store.get('New lab')['target_count'] == 1
+    assert context['active_workspace'] == 'actions'
+    assert context['preview_token'] == '' and context['results'] is None
+    execute.assert_not_called()
+    enqueue.assert_not_called()
+
+
+def test_save_hosts_continue_validation_stays_with_inputs(workspace):
+    app, client, store = workspace
+    with rendered(app) as context:
+        response = client.post('/tools/multi-ssh', data={
+            'action': 'save_host_matrix_continue', 'workspace': 'hosts',
+            'host_matrix_name': 'Invalid lab', 'matrix': '',
+        })
+    assert response.status_code == 200
+    assert context['active_workspace'] == 'hosts' and context['error']
+    assert context['form']['host_matrix_name'] == 'Invalid lab'
+    assert store.get('Invalid lab') is None

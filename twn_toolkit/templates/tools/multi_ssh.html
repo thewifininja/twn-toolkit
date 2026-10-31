@@ -6,7 +6,7 @@
 
 {% block content %}
 <header class="run-page-heading"><h1>Bulk SSH</h1></header>
-{% if ssh_job_api %}{% include 'components/recent_runs.html' %}{% endif %}
+{% if ssh_job_api and ssh_recent %}{% include 'components/recent_runs.html' %}{% endif %}
 {% set has_results = results is not none %}
 {% set success_count = results|selectattr('status', 'equalto', 'success')|list|length if has_results else 0 %}
 <div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
@@ -15,15 +15,10 @@
 
 <div class="tool-setup-panel tool-setup-stack" id="multi-ssh-settings" data-tool-settings-panel>
   <section class="panel tool-panel multi-ssh-panel">
-    <div class="panel-head tool-setup-heading">
-      <div>
-        <p class="eyebrow">Fleet command workspace</p>
-
-        <p>Keep reusable hosts, per-host variables, and a compatible CLI action library together in one matrix.</p>
-      </div>
+    <div class="tool-setup-heading multi-ssh-intro">
+      <p>Choose hosts, prepare commands, then review before running.</p>
       <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
     </div>
-    {% if ssh_job_api %}<p class="field-note">Background runs have a {{ ssh_job_timeout }}-second total deadline, adjustable in Operations settings. Hosts that do not start before cancellation or the deadline are not replayed.</p>{% endif %}
     {% if error %}<div class="message error">{{ error }}</div>{% endif %}
     {% if success %}<div class="message success">{{ success }}</div>{% endif %}
 
@@ -61,9 +56,9 @@
     </section>
 
     <div class="multi-ssh-workspace-tabs" role="tablist" aria-label="Bulk SSH workspace" data-ssh-workspace-tabs>
-      <button type="button" role="tab" id="multi-ssh-hosts-tab" aria-controls="multi-ssh-hosts-panel" aria-selected="{{ 'true' if active_workspace == 'hosts' else 'false' }}" data-ssh-workspace-tab="hosts">Hosts</button>
-      <button type="button" role="tab" id="multi-ssh-actions-tab" aria-controls="multi-ssh-actions-panel" aria-selected="{{ 'true' if active_workspace == 'actions' else 'false' }}" data-ssh-workspace-tab="actions">CLI actions</button>
-      <button type="button" role="tab" id="multi-ssh-run-tab" aria-controls="multi-ssh-run-panel" aria-selected="{{ 'true' if active_workspace == 'run' else 'false' }}" data-ssh-workspace-tab="run">Run</button>
+      <button type="button" role="tab" id="multi-ssh-hosts-tab" aria-controls="multi-ssh-hosts-panel" aria-selected="{{ 'true' if active_workspace == 'hosts' else 'false' }}" data-ssh-workspace-tab="hosts">1 · Hosts</button>
+      <button type="button" role="tab" id="multi-ssh-actions-tab" aria-controls="multi-ssh-actions-panel" aria-selected="{{ 'true' if active_workspace == 'actions' else 'false' }}" data-ssh-workspace-tab="actions">2 · CLI actions</button>
+      <button type="button" role="tab" id="multi-ssh-run-tab" aria-controls="multi-ssh-run-panel" aria-selected="{{ 'true' if active_workspace == 'run' else 'false' }}" data-ssh-workspace-tab="run">3 · Review &amp; run</button>
     </div>
 
     <div class="multi-ssh-workspace-panels">
@@ -75,7 +70,6 @@
           <section class="multi-ssh-workspace-card" data-ssh-matrix-editor data-ssh-target-limit="{{ ssh_target_limit }}">
             <div class="multi-ssh-section-head">
               <div>
-                <p class="eyebrow">Matrix ownership</p>
                 <h2>{{ form.host_matrix_original_name or 'Build a host matrix' }}</h2>
                 <p>Names and hosts stay fixed. Custom columns become variables available to every CLI action in this matrix.</p>
               </div>
@@ -128,7 +122,8 @@
             <div class="multi-ssh-save-row">
               <p class="field-note">Saving validates every existing CLI action against the updated columns and values. Credentials are not saved with this configuration.</p>
               <div class="button-row">
-                {{ list_switch('ssh.matrix', form.host_matrix_original_name) }}<button name="action" type="submit" value="save_host_matrix">{{ 'Save matrix changes' if form.host_matrix_original_name else 'Save host matrix' }}</button>
+                {{ list_switch('ssh.matrix', form.host_matrix_original_name) }}<button class="secondary" name="action" type="submit" value="save_host_matrix">{{ 'Save matrix changes' if form.host_matrix_original_name else 'Save host matrix' }}</button>
+                <button name="action" type="submit" value="save_host_matrix_continue">Save &amp; continue to commands</button>
 
               </div>
             </div>
@@ -220,6 +215,7 @@
       </section>
 
       <section id="multi-ssh-run-panel" role="tabpanel" aria-labelledby="multi-ssh-run-tab" data-ssh-workspace-panel="run" {% if active_workspace != 'run' %}hidden{% endif %}>
+        {% if ssh_job_api %}<p class="field-note">Background runs have a {{ ssh_job_timeout }}-second total deadline, adjustable in Operations settings. Hosts that do not start before cancellation or the deadline are not replayed.</p>{% endif %}
         {% if selected_matrix and matrix_actions %}
           <form class="form multi-ssh-run-form" id="multi-ssh-run-form" method="post" autocomplete="off" data-multi-ssh data-unsaved-form {% if ssh_job_api %}data-ssh-job-api{% endif %} data-ssh-host-count="{{ selected_matrix.target_count }}">
             <input type="hidden" name="workspace" value="run">
