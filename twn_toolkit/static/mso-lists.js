@@ -61,7 +61,7 @@
   document.querySelectorAll('form[data-mso-matrix]').forEach((form) => {
     form.addEventListener('submit', (event) => {
       const deleting = event.submitter?.hasAttribute('formaction');
-      if (!deleting && event.submitter?.value !== 'save_host_matrix') return;
+      if (!deleting && !['save_host_matrix', 'save_host_matrix_continue'].includes(event.submitter?.value)) return;
       if (deleting && !window.confirm(window.TwnMso.deleteMessage(form, form.elements.host_matrix_original_name.value))) {
         event.preventDefault(); return;
       }
