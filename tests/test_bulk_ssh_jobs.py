@@ -580,3 +580,24 @@ def test_real_ssh_multiline_certificate_waits_for_normal_prompt(ssh_server):
     assert result['status'] == 'success', result
     assert b''.join(received).decode() == '\n'.join(spec['command'] for spec in commands) + '\n'
     assert '> ' in result['output']
+
+
+@pytest.mark.parametrize('host_status, expected', [('success', 'succeeded'), ('error', 'incomplete')])
+def test_terminal_summary_and_case_agree_on_host_outcome(setup, monkeypatch, host_status, expected):
+    from twn_toolkit.investigations import InvestigationStore
+    app, store = setup
+    app.test_client().post('/investigations', data={'title': 'Outcome fixture'})
+    cases = InvestigationStore(app.instance_path)
+    case_id = cases.active_for_user('test-user')['id']
+    job_id, _ = submit(app)
+    def result(*args):
+        return {**success(*args), 'status': host_status}
+    monkeypatch.setattr(network, '_ssh_host_connection', result)
+    with patch('twn_toolkit.activity.ActivityStore.record_event') as activity:
+        job = complete(store)
+    assert job['state'] == 'succeeded'  # worker completed; host may still fail
+    event = next(e for e in cases.events_for_user(case_id, 'test-user')
+                 if e['operation_id'] == 'multi-ssh:' + job_id)
+    assert event['outcome'] == expected
+    assert event['summary'].startswith(f'Bulk SSH {expected}:')
+    assert activity.call_args.args[2] == event['summary'] == job['summary']['stage']
