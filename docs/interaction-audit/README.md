@@ -181,3 +181,36 @@ Public listener clarification: `distributed_terminal._connect_mainframe` opens
 an outbound mTLS connection to the same Agent listener and uses the private
 `twn-terminal-v1` upgrade. It adds no public port. Agent Mainframe URLs must be
 HTTPS and cannot carry a path prefix (`_normalize_agent_mainframe_url`).
+
+## Populated runbook overlap follow-up
+
+Observed in the preview at 1154×1242: a narrow desktop run column gave the
+four-column action row a zero-width title track; the status badge overpainted
+the title. The list now uses its own inline-size container to reflow status and
+controls below the title when narrow. Long unbroken names wrap within the title.
+A subsequent scrolling screenshot caught a second issue: implicit grid rows
+could shrink to 48px and let content spill into adjacent rows. Max-content row
+sizing preserves content height inside the existing scroll area. Compatibility
+list titles also wrap without forcing horizontal overflow.
+
+Validation uses a separate synthetic loopback fixture with twelve actions,
+including a 100-character unbroken name. Seventy-two viewport/density/text/palette
+cases cover widths 390, 720, 980, 1000, 1154, 1280, 1662, 1665 and 1920; both
+densities; 100%/125% text; dark and light palettes. Checks include 864 runbook
+rows, child containment, adjacent-row separation, horizontal overflow and the
+460px container threshold. The light matrix also checks child containment in
+the compatibility list. The preview notice does not overlap the app header.
+Initial within-row-only geometry missed the cross-row issue; screenshot review
+and expanded assertions supersede those earlier checks.
+
+Keyboard reorder/remove performed the expected local runbook changes. Focus
+fell back to the body after the existing JavaScript rerender; retaining focus is
+a separate QoL follow-up, not fixed by this CSS change. Independent source review
+found no blocking issue in the expanded CSS. Affected workflow/preview/sharing
+regressions are run separately from the prior complete-suite baseline.
+Final overlap follow-up regression result: **39 passed in 23.95 seconds**
+(`/tmp/twn-qol-responsive-final.log`). Four additional New-host dialog checks
+(390×600 and 1154×1242, dark/light, comfortable density at 125%) confirmed the
+organization disclosure, scroll navigation and visible footer without horizontal
+overflow. The earlier 2,449-test/481-subtest full run predates this CSS-only fix;
+it is not represented as a new full-suite run of the follow-up.
