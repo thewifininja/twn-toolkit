@@ -22,12 +22,12 @@ asserted against isolated synthetic state; **inferred** = source reviewed;
 | Flow | Current evidence | Next validation / remaining gap |
 |---|---|---|
 | Dashboard → search / target / favorites | Observed signed-in local dashboard; `internet` no match, `dns` matches; target only This instance | Novice aliases, unavailable-agent explanation, result continuation links; nonadmin and empty account unverified |
-| Bulk SSH hosts → commands → review | Observed original empty state; source-reviewed draft/preview safety; batch changes compact header and add explicit Save & continue | Synthetic success/validation/no-execution regression; draft switching/back/reload and keyboard visual checks |
+| Bulk SSH hosts → commands → review | Observed original empty state; source-reviewed draft/preview safety; batch changes compact header and add explicit Save & continue | Tested save/validation/no-execution in `test_bulk_ssh_workflow`; full draft/back/reload browser matrix remains unverified |
 | Remote Terminal → Quick connect | Observed SSH/22 defaults, optional title, one-time credentials, cancel; no connection attempted | Mock connect/error/retry/reconnect, SSH/Telnet/console differences |
 | Remote Terminal → New/Edit host | Observed original New dialog; batch groups destination/credentials/organization and keeps footer available | Isolated New/Edit, validation inside disclosures, keyboard/footer at narrow/short viewports and all palettes |
-| Loop Inspector host selection | Inferred page-one-only truncation; batch uses complete permission-filtered library | >100 mixed hosts, foreign private exclusion, visible shared inclusion; no device calls |
+| Loop Inspector host selection | Inferred page-one-only truncation; batch uses complete permission-filtered library | Tested >100 mixed hosts, foreign private exclusion and visible shared inclusion (`test_ssh_selector_covers_complete_visible_library`); no device calls |
 | Investigations list / closed journal / evidence | Observed existing list and closed case; batch prioritizes case list and selected tab content over team/merge | Synthetic empty/open/closed/collaborator cases and merge permissions; report/export unchanged |
-| Bulk SSH terminal outcome | Observed historical incomplete badge with succeeded summary; source shows worker completion distinct from host success | Synthetic mixed-result completion consistent across case/activity/audit; no historical rewrite |
+| Bulk SSH terminal outcome | Observed historical incomplete badge with succeeded summary; source shows worker completion distinct from host success | Tested success/error completion consistent across case/activity summary (`test_terminal_summary_and_case_agree_on_host_outcome`); no historical rewrite |
 | Agent lifecycle | Inferred 30-day client cert without renewal, generic disconnected state, reset/re-pair recovery | Separate design below; live security unchanged, expired-agent reproduction unverified |
 | Other inventory surfaces | Unverified beyond existing repository test coverage | Audit in batches below; do not infer usability from unit-test pass |
 
@@ -166,5 +166,18 @@ configuration or current live settings were inspected or modified in this batch.
 Validation history: the first full run had 2,447 passes, 481 passing subtests and
 one obsolete header-label assertion failure in `test_ssh_commandlets`. Its header
 and numbered-tab expectations were updated for the intentional UI changes; the
-preview/execution assertions remain. A final full run is required and its result
-will be recorded in the PR. Additional continuation/MSO focused run: 19 passed.
+preview/execution assertions remain. Final full run completed: **2,449 passed, 481 subtests passed in 685.28 seconds**
+(`/tmp/twn-qol-full-final.log`). No PR/CI result exists yet; remote review remains
+a separate merge gate. Additional continuation/MSO focused run: 19 passed.
+
+Additional isolated visual evidence: 12 New-host variants at 390×600, 125% text,
+six palettes and both densities, with sharing controls rendered by the fixture,
+passed overflow/Save-visibility checks (108 targeted dialog combinations total).
+No Mainframe role, enrollment, worker or sharing state was enabled. The fixture
+server and tabs were closed and the viewport restored. The live checkout remains
+on `main` at `3ddaaee` with its existing untracked manifest preserved.
+
+Public listener clarification: `distributed_terminal._connect_mainframe` opens
+an outbound mTLS connection to the same Agent listener and uses the private
+`twn-terminal-v1` upgrade. It adds no public port. Agent Mainframe URLs must be
+HTTPS and cannot carry a path prefix (`_normalize_agent_mainframe_url`).
