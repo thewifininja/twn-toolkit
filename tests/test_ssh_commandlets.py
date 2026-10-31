@@ -264,11 +264,11 @@ class SSHCommandletRouteTests(unittest.TestCase):
                 "port": "22",
             }
             initial_page = client.get("/tools/multi-ssh")
-            self.assertIn(b"Fleet command workspace", initial_page.data)
+            self.assertIn(b"Choose hosts, prepare commands, then review before running.", initial_page.data)
             self.assertIn(b"Host matrix", initial_page.data)
-            self.assertIn(b'data-ssh-workspace-tab="hosts">Hosts', initial_page.data)
-            self.assertIn(b'data-ssh-workspace-tab="actions">CLI actions', initial_page.data)
-            self.assertIn(b'data-ssh-workspace-tab="run">Run', initial_page.data)
+            self.assertIn('data-ssh-workspace-tab="hosts">1 · Hosts'.encode(), initial_page.data)
+            self.assertIn('data-ssh-workspace-tab="actions">2 · CLI actions'.encode(), initial_page.data)
+            self.assertIn('data-ssh-workspace-tab="run">3 · Review &amp; run'.encode(), initial_page.data)
             self.assertIn(b"Raw matrix", initial_page.data)
             self.assertEqual(initial_page.data.count(b"data-ssh-matrix-mode="), 1)
             self.assertIn(b'data-ssh-matrix-toggle', initial_page.data)
