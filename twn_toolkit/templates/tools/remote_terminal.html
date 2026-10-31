@@ -228,10 +228,9 @@
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-host-title">New saved host</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
     <p class="remote-terminal-dialog-intro" data-shared-item-note hidden>You are editing a shared item. Changes apply to everyone who uses it. Only its owner can make it private.</p>
     <input id="remote-host-id" type="hidden">
+    <section class="remote-terminal-dialog-section"><h3>Connection</h3>
     <div class="form-grid remote-terminal-dialog-grid">
       <label>Display name<input id="remote-host-name" maxlength="100" required placeholder="Core Switch 01"></label>
-      <label>Folder<select id="remote-host-folder"></select></label>
-      <label class="remote-host-availability-field">Availability<select id="remote-host-visibility"><option value="inherit">Inherit from folder</option><option value="global">Global</option><option value="admins_only">Admins Only</option><option value="private">Private</option></select><small>Top-level hosts inherit Admins Only.</small></label>
       <label>Protocol<select id="remote-host-protocol"><option value="ssh">SSH</option><option value="telnet">Telnet</option><option value="console">Console</option></select></label>
       <div class="form-grid remote-host-target-fields" data-host-network>
         <label class="remote-host-address-field">Hostname or IP address<input id="remote-host-address" maxlength="255" required placeholder="switch01.example.com" autocapitalize="none" spellcheck="false"></label>
@@ -252,6 +251,7 @@
         <label>Flow control<select id="remote-host-console-flow">{% for value in serial_console_options.flow_controls %}<option value="{{ value }}">{{ value|title }}</option>{% endfor %}</select></label>
       </div>
     </div>
+    </section>
     <p class="message warning remote-terminal-telnet-warning" data-host-telnet-warning hidden>Telnet sends terminal traffic without encryption. Assigned credentials are sent only when an operator selects the explicit terminal controls. Use Telnet only on a trusted network.</p>
     <fieldset class="remote-terminal-credential-choice" data-host-credentials>
       <legend>Credential assignment</legend>
@@ -273,7 +273,13 @@
       <label class="check"><input id="remote-host-unknown" type="checkbox"><span>Trust this host key on first connection</span></label>
       <label class="check"><input id="remote-host-legacy" type="checkbox"><span>Allow legacy SSH algorithms</span></label>
     </div>
+    <details class="remote-host-organization"><summary>Folder, availability &amp; notes</summary>
+    <div class="form-grid remote-terminal-dialog-grid">
+      <label>Folder<select id="remote-host-folder"></select></label>
+      <label class="remote-host-availability-field">Availability<select id="remote-host-visibility"><option value="inherit">Inherit from folder</option><option value="global">Global</option><option value="admins_only">Admins Only</option><option value="private">Private</option></select><small>Top-level hosts inherit Admins Only.</small></label>
+    </div>
     <label>Notes <span class="inline-label-note">(optional)</span><textarea id="remote-host-notes" rows="3" maxlength="1000" placeholder="Location, role, maintenance context…"></textarea></label>
+    </details>
     <p class="tool-status" id="remote-host-status" role="status"></p>
     <footer class="remote-terminal-dialog-footer-split">
       <span class="button-row" data-host-existing-actions hidden><button class="secondary" type="button" data-duplicate-host>Duplicate</button><button class="danger" type="button" data-delete-host>Delete</button></span>

@@ -67,67 +67,6 @@
     {% endif %}
   </section>
 
-  <section class="panel investigation-team-panel">
-    {% call section_header("Case team", ("This local copy is owned by the importer; original operators remain attributed throughout the journal." if investigation.is_imported else "Every note, tool run, and evidence file is attributed to the operator who added it."), "Collaboration") %}
-      <span class="investigation-team-count">{{ investigation_participants|length }} {{ 'operator' if investigation_participants|length == 1 else 'operators' }}</span>
-    {% endcall %}
-    <div class="investigation-team-layout{% if not (investigation.can_manage_case and investigation.is_open and collaborator_candidates) %} single{% endif %}">
-      <div class="investigation-team-list" aria-label="Case participants">
-        {% for participant in investigation_participants %}
-          <div class="investigation-team-member">
-            <span class="investigation-team-avatar" aria-hidden="true">{{ participant.username[:1]|upper }}</span>
-            <span><strong>{{ participant.username }}</strong><small>{{ 'Case owner' if participant.is_owner else 'Collaborator' }}</small></span>
-            {% if investigation.can_manage_case and not participant.is_owner %}
-              <form method="post" action="{{ url_for('remove_investigation_participant', investigation_id=investigation.id, participant_user_id=participant.user_id) }}" onsubmit="return confirm('Remove {{ participant.username|e }} from this case? Their existing journal entries and evidence will remain attributed to them.');">
-                <button class="danger compact" type="submit">Remove</button>
-              </form>
-            {% endif %}
-          </div>
-        {% endfor %}
-      </div>
-      {% if investigation.can_manage_case and investigation.is_open and collaborator_candidates %}
-        <form class="investigation-team-add" method="post" action="{{ url_for('add_investigation_participant', investigation_id=investigation.id) }}">
-          <div class="investigation-team-add-copy">
-            <strong>Add collaborator</strong>
-            <small>Operators can participate in one open case at a time.</small>
-          </div>
-          <div class="investigation-team-add-controls">
-            <label class="sr-only" for="investigation-collaborator">Operator</label>
-            <select id="investigation-collaborator" name="user_id" required>
-              <option value="">Choose an operator…</option>
-              {% for candidate in collaborator_candidates %}<option value="{{ candidate.id }}">{{ candidate.username }}</option>{% endfor %}
-            </select>
-            <button class="compact" type="submit">Add</button>
-          </div>
-        </form>
-      {% endif %}
-    </div>
-  </section>
-
-  {% if active_investigation_tab == 'journal' and not investigation.is_open %}
-    <section class="panel investigation-merge-entry">
-      {{ section_header("Merge this case", "Copy the complete journal and evidence into an open case you own. This source case remains unchanged.", "Case transfer") }}
-      {% if merge_destinations %}
-        {% set merge_destination = merge_destinations[0] %}
-        <div class="investigation-merge-destination">
-          <div>
-            <span class="eyebrow">Open destination</span>
-            <strong>{{ merge_destination.title }}</strong>
-            <small>{{ merge_destination.event_count }} journal {{ 'entry' if merge_destination.event_count == 1 else 'entries' }} · {{ merge_destination.artifact_count }} evidence {{ 'file' if merge_destination.artifact_count == 1 else 'files' }}</small>
-          </div>
-          <form method="get" action="{{ url_for('preview_investigation_merge', source_investigation_id=investigation.id) }}">
-            <input type="hidden" name="destination_id" value="{{ merge_destination.id }}">
-            <button type="submit">Review merge</button>
-          </form>
-        </div>
-      {% else %}
-        {% call empty_state("No destination case is ready", "Open or resume a case you own, then return here to review the merge before anything is copied.") %}
-          <a class="button-link secondary" href="{{ url_for('investigations') }}">Back to investigations</a>
-        {% endcall %}
-      {% endif %}
-    </section>
-  {% endif %}
-
   {% if active_investigation_tab == 'journal' %}
     {% if investigation.is_open %}
       <section class="panel investigation-note-panel">
@@ -342,6 +281,68 @@
       {% endif %}
     </article>
   {% endif %}
+  <details class="panel investigation-team-panel"><summary>Case team · {{ investigation_participants|length }} {{ 'operator' if investigation_participants|length == 1 else 'operators' }}</summary>
+    {% call section_header("Case team", ("This local copy is owned by the importer; original operators remain attributed throughout the journal." if investigation.is_imported else "Every note, tool run, and evidence file is attributed to the operator who added it."), "Collaboration") %}
+      <span class="investigation-team-count">{{ investigation_participants|length }} {{ 'operator' if investigation_participants|length == 1 else 'operators' }}</span>
+    {% endcall %}
+    <div class="investigation-team-layout{% if not (investigation.can_manage_case and investigation.is_open and collaborator_candidates) %} single{% endif %}">
+      <div class="investigation-team-list" aria-label="Case participants">
+        {% for participant in investigation_participants %}
+          <div class="investigation-team-member">
+            <span class="investigation-team-avatar" aria-hidden="true">{{ participant.username[:1]|upper }}</span>
+            <span><strong>{{ participant.username }}</strong><small>{{ 'Case owner' if participant.is_owner else 'Collaborator' }}</small></span>
+            {% if investigation.can_manage_case and not participant.is_owner %}
+              <form method="post" action="{{ url_for('remove_investigation_participant', investigation_id=investigation.id, participant_user_id=participant.user_id) }}" onsubmit="return confirm('Remove {{ participant.username|e }} from this case? Their existing journal entries and evidence will remain attributed to them.');">
+                <button class="danger compact" type="submit">Remove</button>
+              </form>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+      {% if investigation.can_manage_case and investigation.is_open and collaborator_candidates %}
+        <form class="investigation-team-add" method="post" action="{{ url_for('add_investigation_participant', investigation_id=investigation.id) }}">
+          <div class="investigation-team-add-copy">
+            <strong>Add collaborator</strong>
+            <small>Operators can participate in one open case at a time.</small>
+          </div>
+          <div class="investigation-team-add-controls">
+            <label class="sr-only" for="investigation-collaborator">Operator</label>
+            <select id="investigation-collaborator" name="user_id" required>
+              <option value="">Choose an operator…</option>
+              {% for candidate in collaborator_candidates %}<option value="{{ candidate.id }}">{{ candidate.username }}</option>{% endfor %}
+            </select>
+            <button class="compact" type="submit">Add</button>
+          </div>
+        </form>
+      {% endif %}
+    </div>
+  </details>
+
+  {% if active_investigation_tab == 'journal' and not investigation.is_open %}
+    <details class="panel investigation-merge-entry"><summary>Merge this case</summary>
+      {{ section_header("Merge this case", "Copy the complete journal and evidence into an open case you own. This source case remains unchanged.", "Case transfer") }}
+      {% if merge_destinations %}
+        {% set merge_destination = merge_destinations[0] %}
+        <div class="investigation-merge-destination">
+          <div>
+            <span class="eyebrow">Open destination</span>
+            <strong>{{ merge_destination.title }}</strong>
+            <small>{{ merge_destination.event_count }} journal {{ 'entry' if merge_destination.event_count == 1 else 'entries' }} · {{ merge_destination.artifact_count }} evidence {{ 'file' if merge_destination.artifact_count == 1 else 'files' }}</small>
+          </div>
+          <form method="get" action="{{ url_for('preview_investigation_merge', source_investigation_id=investigation.id) }}">
+            <input type="hidden" name="destination_id" value="{{ merge_destination.id }}">
+            <button type="submit">Review merge</button>
+          </form>
+        </div>
+      {% else %}
+        {% call empty_state("No destination case is ready", "Open or resume a case you own, then return here to review the merge before anything is copied.") %}
+          <a class="button-link secondary" href="{{ url_for('investigations') }}">Back to investigations</a>
+        {% endcall %}
+      {% endif %}
+    </details>
+  {% endif %}
+
+
 </div>
 <script src="{{ url_for('static', filename='unsaved-forms.js', v=app_version) }}"></script>
 {% endblock %}
