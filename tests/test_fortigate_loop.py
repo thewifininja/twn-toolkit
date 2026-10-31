@@ -253,3 +253,26 @@ def test_lldp_names_with_spaces_are_preserved_and_missing_stp_not_inferred():
     switch={'id':'A','ports':[{'name':'port1'},{'name':'port2'}],
             'diagnostics':{'lldp':parse_output('lldp',SELF_LLDP,'A')}}
     assert 'STP blocking state for this pair is unavailable' in same_switch_links(switch)[0]['message']
+
+
+def test_ssh_selector_covers_complete_visible_library(browser):
+    store = browser.application.extensions['remote_connection_store']
+    def saved(name, owner='test-user', protocol='ssh'):
+        return store.save_host(user_id=owner, name=name, host='fixture.invalid', port=22,
+            protocol=protocol, folder_id='', credential_id='', credential_mode='inherit',
+            allow_unknown_hosts=False, allow_legacy_algorithms=False)
+    # The earlier selector paged before filtering protocol: even a single SSH
+    # host could disappear behind 100 earlier non-SSH entries.
+    for index in range(101):
+        saved(f'A Telnet {index:03}', protocol='telnet')
+    expected = saved('Z visible SSH')
+    private = saved('Z foreign private', owner='foreign')
+    store.bulk_update(user_id='foreign', host_ids=[private['id']], folder_ids=[], visibility='private')
+    shared = saved('Z shared SSH', owner='foreign')
+    store.bulk_update(user_id='foreign', host_ids=[shared['id']], folder_ids=[], visibility='global')
+    response = browser.get('/fortigate/loop-inspector')
+    assert response.status_code == 200
+    assert expected['id'].encode() in response.data
+    assert shared['id'].encode() in response.data
+    assert private['id'].encode() not in response.data
+    assert b'A Telnet' not in response.data

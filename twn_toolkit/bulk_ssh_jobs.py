@@ -248,7 +248,11 @@ def record_outcome(store, previous, state, error):
     audit_details = {**stats, 'mode': 'matrix', 'host count': config['host_count'],
                      'command count': command_count, 'legacy SSH compatibility': config['allow_legacy_algorithms']}
     state = job['state']
-    description = f"Bulk SSH {state}: {stats['completed']} of {config['host_count']} hosts completed; {stats['unconfirmed']} unconfirmed, {stats['not_started']} not started."
+    # A finished worker is not proof that each host's commands succeeded.
+    # Use the same outcome for activity, audit, and the case journal.
+    outcome = (('succeeded' if job['summary'].get('successful_hosts') == config['host_count'] else 'incomplete')
+               if state in ('unknown', 'succeeded') else state)
+    description = f"Bulk SSH {outcome}: {stats['completed']} of {config['host_count']} hosts completed; {stats['unconfirmed']} unconfirmed, {stats['not_started']} not started."
     warnings = []
     for name, callback in (
         ('activity', lambda: ActivityStore(str(store.instance)).record_event('Automation', 'Ran Bulk SSH', description, counters={'ssh': {'hosts': stats['started'], 'commands': stats['started'] * command_count}}, count_action=True, **identity)),
@@ -270,7 +274,7 @@ def record_outcome(store, previous, state, error):
             generated = InvestigationStore(str(store.instance)).add_generated_evidence_event(
                 investigation_id=config['investigation_id'], **identity,
                 operation_id='multi-ssh:' + job['id'], event_type='action.completed',
-                tool_id='tools.multi_ssh', action='Bulk SSH', outcome=('succeeded' if summary.get('successful_hosts') == config['host_count'] else 'incomplete') if state in ('unknown','succeeded') else state,
+                tool_id='tools.multi_ssh', action='Bulk SSH', outcome=outcome,
                 summary=description, targets={'host_count': config['host_count']},
                 parameters={'port': config['port'], 'reviewed_plan_digest': config['digest']}, metrics=stats,
                 details={'error': job['error']}, started_at=job.get('started') or job['created'], completed_at=time.time(),
