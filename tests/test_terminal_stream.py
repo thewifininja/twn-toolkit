@@ -166,7 +166,32 @@ def test_owner_wait_has_no_output_queries_when_idle(echo_session, monkeypatch):
     close_socket(connection)
 
 
-def test_mtls_outbound_relay_and_single_use_ticket(tmp_path, echo_session):
+@pytest.mark.parametrize('revocation_order', ['before_send', 'during_send'])
+def test_mtls_outbound_relay_and_single_use_ticket(tmp_path, echo_session, monkeypatch, revocation_order):
+    from twn_toolkit import distributed_terminal
+    rejected, release_rejection, relay_closed = (threading.Event() for _ in range(3))
+    observation_errors = []
+    original_relay = distributed_terminal.relay
+
+    def observed_relay(left, right, authorized=lambda: True):
+        revoked = False
+        def observed_authorization():
+            nonlocal revoked
+            allowed = authorized()
+            if not allowed:
+                revoked = True
+                rejected.set()
+                if not release_rejection.wait(3):
+                    observation_errors.append('Timed out waiting for the test to release revocation.')
+            return allowed
+        try:
+            return original_relay(left, right, observed_authorization)
+        finally:
+            if revoked:
+                # The real pump closes both descriptors before returning.
+                relay_closed.set()
+
+    monkeypatch.setattr(distributed_terminal, 'relay', observed_relay)
     manager, session = echo_session
     instance = manager.store.instance_path
     server = EnrollmentServer(tmp_path / 'hub', '127.0.0.1', 0)
@@ -192,7 +217,21 @@ def test_mtls_outbound_relay_and_single_use_ticket(tmp_path, echo_session):
                 next_output(connection, f'tunneled-{attempt}')
                 if attempt == 7:
                     server.agent_store.set_state(agent['id'], 'revoked')
-                    send_frame(connection, {'type': 'input', 'sequence': 2, 'data': 'revoked-input'})
+                    if revocation_order == 'before_send':
+                        release_rejection.set()
+                        # Wake the real relay with legitimate owner-side output,
+                        # then wait until its revocation check has closed it.
+                        manager.send_input(session['id'], user_id='viewer', data='owner-revocation-wakeup')
+                        assert rejected.wait(3)
+                        assert relay_closed.wait(3)
+                        with pytest.raises((BrokenPipeError, ConnectionResetError)):
+                            send_frame(connection, {'type': 'input', 'sequence': 2, 'data': 'revoked-input'})
+                    else:
+                        # Hold the rejection boundary until the viewer's write
+                        # completes. No revoked input may reach the owner.
+                        send_frame(connection, {'type': 'input', 'sequence': 2, 'data': 'revoked-input'})
+                        assert rejected.wait(3)
+                        release_rejection.set()
                     with pytest.raises((EOFError, ConnectionResetError)):
                         while True:
                             receive_frame(connection)
@@ -203,8 +242,10 @@ def test_mtls_outbound_relay_and_single_use_ticket(tmp_path, echo_session):
                 assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
             replay = manager.store.output_page(session['id'], user_id='viewer')
             assert 'revoked-input' not in ''.join(chunk['output'] for chunk in replay['chunks'])
-
+        assert not observation_errors
+        assert relay_closed.wait(3)
     finally:
+        release_rejection.set()
         server.stop()
 
 
