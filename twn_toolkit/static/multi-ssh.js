@@ -373,6 +373,8 @@
     if (runbook?.querySelector('[data-ssh-runbook-action]')) {
       reviewTimer = setTimeout(refreshReview, 150);
     } else {
+      // Removing the last action cancels this draft plan and its exceptions.
+      reviewContent.textContent = 'No command plan to review. Add an action to this run.';
       status.textContent = 'Add at least one CLI action. Nothing has run.';
     }
   };
