@@ -262,39 +262,20 @@
               </section>
 
               <section class="multi-ssh-workspace-card multi-ssh-preflight-card">
-                <div class="multi-ssh-section-head compact"><div><p class="eyebrow">Preflight</p><h2>Review commands</h2><p>Review compatibility and representative substitutions without repeating every host command.</p></div>{% if preview %}<span class="pill success">{{ preview.plans|length }} hosts ready</span>{% endif %}</div>
-                {% if preview %}
-                  <div class="multi-ssh-preflight-list">
-                    {% for matrix_action in preview.selected_actions %}<div><span><strong>{{ matrix_action.name }}</strong><small>{% if matrix_action.variables %}Requires {{ matrix_action.variables|join(' · ') }}{% else %}No custom variables{% endif %}</small></span><span>{{ preview.plans|length }} hosts</span><span class="pill success">compatible</span></div>{% endfor %}
-                  </div>
-                  {% if preview.representative_plan %}
-                    <details class="multi-ssh-exact-plan" data-ssh-preview>
-                      <summary>Show representative resolved plan · {{ preview.representative_plan.label or preview.representative_plan.host }}</summary>
-                      <pre class="result-output">{% for command in preview.representative_plan.commands %}{{ command }}{% if not loop.last %}
-{% endif %}{% endfor %}</pre>
-                      <p class="field-note">The signed preview covers all {{ preview.plans|length }} hosts even though only one resolved plan is displayed.</p>
-                    </details>
-                  {% endif %}
-                {% else %}
-                  <div class="multi-ssh-preflight-list">
-                    {% for matrix_action in selected_run_actions %}<div><span><strong>{{ matrix_action.name }}</strong><small>{{ matrix_action.variables|join(' · ') if matrix_action.variables else 'No custom variables' }}</small></span><span>{{ selected_matrix.target_count }} hosts</span><span class="pill success">compatible</span></div>{% endfor %}
-                  </div>
-                {% endif %}
-                <div class="multi-ssh-run-summary" data-ssh-run-summary aria-live="polite"></div>
-                <div class="button-row"><button class="secondary" name="action" type="submit" value="preview" formnovalidate data-ssh-preview-button>{{ 'Refresh signed preview' if preview else 'Preview selected actions' }}</button><span class="field-note" data-ssh-preview-status {% if not preview_token %}hidden{% endif %}>Preview is current.</span></div>
+                <div data-ssh-review-content>{% include "tools/_multi_ssh_review.html" %}</div>
+                <div class="button-row"><button class="secondary" name="action" type="submit" value="preview" formnovalidate data-ssh-preview-button>Refresh review</button><span class="field-note" data-ssh-preview-status role="status" {% if not preview_token %}hidden{% endif %}>Review is current.</span></div>
               </section>
             </div>
 
-            {% if preview_token %}
               <section class="multi-ssh-workspace-card multi-ssh-run-confirmation" data-ssh-run-confirmation>
-                <div class="multi-ssh-section-head"><div><p class="eyebrow">Connect and run</p><h2>Credentials and safeguards</h2><p>The preview is signed. Credentials are used for this run. Mainframe requests use temporary encrypted storage.</p></div><span class="pill success">{{ preview.action_count }} actions · {{ preview.action_execution_count }} executions</span></div>
+                <div class="multi-ssh-section-head"><div><p class="eyebrow">Connect and run</p><h2>Credentials and safeguards</h2><p>Review the commands and connection choices above, then click Run to execute. Credentials are used only for this run.</p></div></div>
                 <label>Run name (optional)<input name="run_name" maxlength="100" value="{{ form.run_name }}" placeholder="{{ form.host_matrix_name or 'Branch switch checks' }}"><span class="field-note">Use a name you will recognize in recent runs. A timestamp is shown automatically.</span></label>
                 <div class="form-grid"><label>Username<input name="username" value="{{ form.username }}" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><label>SSH port<input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required></label></div>
-                {% include "tools/_multi_ssh_run_options.html" %}
-                <label class="check execution-confirm"><input name="confirm_execution" type="checkbox" required>I reviewed the selected actions and intend to execute this signed run plan</label>
-                <div class="button-row"><button name="action" type="submit" value="run" data-ssh-run-button>Run {{ preview.action_count }} action(s) on {{ preview.plans|length }} host(s)</button></div>
+                <label class="check"><input name="send_ctrl_y" type="checkbox" {% if form.send_ctrl_y %}checked{% endif %}>Send Ctrl+Y before commands</label>
+                <input name="confirm_execution" type="hidden" value="on"><p class="field-note">Clicking Run confirms that you reviewed this plan and intend to execute it on the listed hosts.</p>
+                <div class="button-row"><button name="action" type="submit" value="run" data-ssh-run-button {% if not preview_token %}disabled{% endif %}>Run reviewed actions</button></div>
               </section>
-            {% endif %}
+
           </form>
         {% elif preview %}
           <form class="form multi-ssh-run-form" id="multi-ssh-run-form" method="post" autocomplete="off" data-multi-ssh data-unsaved-form {% if ssh_job_api %}data-ssh-job-api{% endif %} data-ssh-host-count="{{ preview.plans|length }}">

@@ -299,22 +299,89 @@
   const runbookEmpty = runForm.querySelector("[data-ssh-runbook-empty]");
   const hostCount = Number(runForm.dataset.sshHostCount || 0);
 
-  const markPreviewStale = () => {
-    if (!token?.value && !preview) return;
-    if (token) token.value = "";
-    if (confirmation) {
-      confirmation.hidden = true;
-      confirmation.querySelectorAll("input, button").forEach((control) => {
-        if (control.type === "password") control.value = "";
-        control.disabled = true;
+  const reviewContent = runForm.querySelector('[data-ssh-review-content]');
+  const runButton = runForm.querySelector('[data-ssh-run-button]');
+  let reviewGeneration = 0;
+  let reviewTimer;
+  const syncChoiceGroups = () => {
+    reviewContent?.querySelectorAll('[data-ssh-choice-all]').forEach((all) => {
+      const fields = [...reviewContent.querySelectorAll(`input[name="${all.dataset.sshChoiceAll}"]`)];
+      const checked = fields.filter((field) => field.checked).length;
+      all.checked = fields.length > 0 && checked === fields.length;
+      all.indeterminate = checked > 0 && checked < fields.length;
+    });
+  };
+  reviewContent?.addEventListener('change', (event) => {
+    const all = event.target.closest('[data-ssh-choice-all]');
+    if (all) reviewContent.querySelectorAll(`input[name="${all.dataset.sshChoiceAll}"]`)
+      .forEach((field) => { field.checked = all.checked; });
+    syncChoiceGroups();
+  });
+  const refreshReview = async () => {
+    if (!reviewContent) return; // Preserve the direct/legacy submission flow.
+    const generation = ++reviewGeneration;
+    const body = new FormData(runForm);
+    // Review only resolves saved commands locally. Never send credentials or
+    // connection permissions as part of an automatic review request.
+    ['username', 'password', 'confirm_execution', 'unknown_key_hosts',
+      'legacy_algorithm_hosts', 'allow_unknown_hosts', 'allow_legacy_algorithms'].forEach((name) => body.delete(name));
+    body.set('action', 'preview');
+    if (token) token.value = '';
+    if (runButton) runButton.disabled = true;
+    status.hidden = false;
+    status.textContent = 'Preparing command review…';
+    try {
+      const response = await fetch(runForm.getAttribute('action') || window.location.href, {
+        method: 'POST', body, headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(15000),
       });
-    }
-    preview?.classList.add("is-stale");
-    if (status) {
-      status.hidden = false;
-      status.textContent = "Runbook changed — preview again.";
+      if (!response.headers.get('content-type')?.includes('application/json')) {
+        throw new Error('The server did not return a review. Check your session.');
+      }
+      const payload = await response.json();
+      if (generation !== reviewGeneration) return;
+      if (!response.ok) throw new Error(payload.error || 'Unable to prepare review.');
+      // Carry only the user's current, explicit choices for unchanged host names.
+      const choices = [...reviewContent.querySelectorAll('input[type=checkbox]:checked')]
+        .map((input) => [input.name, input.value]);
+      reviewContent.innerHTML = payload.html;
+      reviewContent.querySelectorAll('input[type=checkbox]').forEach((input) => {
+        input.checked = choices.some(([name, host]) => name === input.name && host === input.value);
+      });
+      token.value = payload.token;
+      runButton.disabled = false;
+      status.textContent = 'Review is current. Click Run when ready.';
+      updateRunSummary();
+      syncChoiceGroups();
+    } catch (error) {
+      if (generation !== reviewGeneration) return;
+      status.textContent = `${error.message} Use Refresh review to retry. Nothing has run.`;
     }
   };
+  const markPreviewStale = () => {
+    if (!reviewContent) {
+      if (token) token.value = '';
+      if (confirmation) confirmation.hidden = true;
+      return;
+    }
+    ++reviewGeneration; // Reject an older response even before the next request.
+    if (token) token.value = '';
+    if (runButton) runButton.disabled = true;
+    status.hidden = false;
+    status.textContent = 'Runbook changed — updating review…';
+    clearTimeout(reviewTimer);
+    if (runbook?.querySelector('[data-ssh-runbook-action]')) {
+      reviewTimer = setTimeout(refreshReview, 150);
+    } else {
+      status.textContent = 'Add at least one CLI action. Nothing has run.';
+    }
+  };
+
+  runForm.querySelector('[name="port"]')?.addEventListener('input', () => {
+    if (!reviewContent) return;
+    reviewContent.querySelectorAll('input[type=checkbox]').forEach((input) => { input.checked = false; });
+    markPreviewStale();
+  });
 
   const updateRunSummary = () => {
     const rows = [...(runbook?.querySelectorAll("[data-ssh-runbook-action]") || [])];
@@ -333,8 +400,9 @@
     previewButton.disabled = selected === 0;
     if (runbookCount) runbookCount.textContent = `${selected} action${selected === 1 ? "" : "s"}`;
     if (runbookEmpty) runbookEmpty.hidden = selected > 0;
-    if (summary) {
-      summary.textContent = selected
+    const currentSummary = runForm.querySelector('[data-ssh-run-summary]');
+    if (currentSummary) {
+      currentSummary.textContent = selected
         ? `${selected} action(s) · ${hostCount} host(s) · ${selected * hostCount} action executions`
         : "Add at least one CLI action to build a signed preview.";
     }
@@ -429,9 +497,21 @@
     updateRunSummary();
   });
   updateRunSummary();
+  if (reviewContent && runbook?.querySelector('[data-ssh-runbook-action]')) refreshReview();
 
   runForm.addEventListener("submit", (event) => {
     const action = event.submitter?.value;
+    if (action === 'preview' && reviewContent) {
+      event.preventDefault();
+      clearTimeout(reviewTimer);
+      refreshReview();
+      return;
+    }
+    if (action === 'run' && reviewContent && !token?.value) {
+      event.preventDefault();
+      status.textContent = 'Wait for a current review before running.';
+      return;
+    }
     if (["preview", "run"].includes(action) && runbook && !runbook.querySelector("[data-ssh-runbook-action]")) {
       event.preventDefault();
       summary?.scrollIntoView({ block: "nearest" });

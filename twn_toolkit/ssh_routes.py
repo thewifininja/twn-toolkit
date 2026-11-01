@@ -154,7 +154,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     )
                     _annotate_preview_scale(preview)
                     preview_token = _preview_serializer().dumps(
-                        {"digest": ssh_command_plan_digest(preview["plans"]), "nonce": secrets.token_hex(16)}
+                        {"digest": ssh_command_plan_digest(preview["plans"]), "nonce": secrets.token_hex(16), "port": str(form["port"])}
                     )
                     success = (
                         "The legacy host list was imported. Review the rendered "
@@ -279,13 +279,17 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                     _annotate_preview_scale(preview)
                     if action == "preview":
                         preview_token = _preview_serializer().dumps(
-                            {"digest": ssh_command_plan_digest(preview["plans"]), "nonce": secrets.token_hex(16)}
+                            {"digest": ssh_command_plan_digest(preview["plans"]), "nonce": secrets.token_hex(16), "port": str(form["port"])}
                         )
                         suppress_audit_event()
+                        if request.accept_mimetypes.best == 'application/json':
+                            return jsonify(token=preview_token, html=render_template(
+                                'tools/_multi_ssh_review.html', preview=preview,
+                                form=form, selected_run_actions=preview['selected_actions']))
                     elif action == "run":
                         _validate_preview_token(
                             request.form.get("preview_token", ""),
-                            preview["plans"],
+                            preview["plans"], port=str(form['port']),
                         )
                         preview_token = request.form.get("preview_token", "")
                         if request.form.get("confirm_execution") != "on":
@@ -297,7 +301,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                         raise ToolInputError("Choose Preview commands or Run commands.")
                 except (ToolInputError, TypeError, ValueError) as exc:
                     error = str(exc) if str(exc) else "Enter a valid SSH port."
-                    if action == 'run' and request.accept_mimetypes.best == 'application/json':
+                    if action in {'run', 'preview'} and request.accept_mimetypes.best == 'application/json':
                         suppress_audit_event()
                         return jsonify({'error': error}), 400
                     if action == "run":
@@ -588,6 +592,9 @@ def _posted_form() -> dict[str, object]:
         "command_timeout": request.form.get(
             "command_timeout", str(SSH_DEFAULT_COMMAND_TIMEOUT)
         ).strip(),
+        "per_host_options": request.form.get("per_host_options") == "on",
+        "unknown_key_hosts": request.form.getlist("unknown_key_hosts"),
+        "legacy_algorithm_hosts": request.form.getlist("legacy_algorithm_hosts"),
         "allow_unknown_hosts": request.form.get("allow_unknown_hosts") == "on",
         "allow_legacy_algorithms": request.form.get("allow_legacy_algorithms") == "on",
         "send_ctrl_y": request.form.get("send_ctrl_y") == "on",
@@ -1794,7 +1801,7 @@ def _validate_host_key_retry_token(
 
 
 def _validate_preview_token(
-    token: str, plans: list[dict[str, object]]
+    token: str, plans: list[dict[str, object]], *, port: str | None = None
 ) -> None:
     if not token:
         raise ToolInputError(
@@ -1812,6 +1819,8 @@ def _validate_preview_token(
         raise ToolInputError(
             "The command preview is invalid. Preview the commands again."
         ) from exc
+    if port is not None and 'port' in payload and str(payload['port']) != port:
+        raise ToolInputError('The SSH port changed. Refresh the review before running.')
     expected = ssh_command_plan_digest(plans)
     if not hmac.compare_digest(str(payload.get("digest", "")), expected):
         raise ToolInputError(

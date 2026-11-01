@@ -51,7 +51,16 @@ def prepare(form, preview, password, *, retry=None):
     port = int(form['port'])
     if not 1 <= port <= 65535:
         raise ToolInputError('SSH port must be between 1 and 65535.')
-    return {'run_name': run_name, 'matrix': str(form['matrix']), 'commands': str(form['commands']),
+    host_options = None
+    if form.get('per_host_options') and not retry:
+        hosts = {plan['host'] for plan in preview['plans']}
+        unknown = set(form.get('unknown_key_hosts', []))
+        legacy = set(form.get('legacy_algorithm_hosts', []))
+        if (unknown | legacy) - hosts:
+            raise ToolInputError('Connection choices no longer match the reviewed hosts. Refresh the review.')
+        host_options = {host: {'allow_unknown_hosts': host in unknown,
+                               'allow_legacy_algorithms': host in legacy} for host in hosts}
+    return {'host_options': host_options, 'run_name': run_name, 'matrix': str(form['matrix']), 'commands': str(form['commands']),
             'command_timeout': int(form['command_timeout']), 'port': port,
             'allow_unknown_hosts': bool(form.get('allow_unknown_hosts')),
             'allow_legacy_algorithms': bool(form.get('allow_legacy_algorithms')),
@@ -71,6 +80,12 @@ def plans_for(config):
             raise ValueError('The retained host-key retry target does not match.')
         plan['required_host_key_fingerprint'] = retry['presented_fingerprint']
         return [plan]
+    if config.get('host_options') is not None:
+        options = config['host_options']
+        if set(options) != {plan['host'] for plan in plans}:
+            raise ValueError('The retained connection choices do not match the reviewed hosts.')
+        for plan in plans:
+            plan.update(options[plan['host']])
     return plans
 
 
@@ -172,7 +187,7 @@ def execute_ssh(store, job, config):
                     'host': plans[index]['host'], 'port': config['port'],
                     'expected_fingerprint': mismatch['expected_fingerprint'],
                     'presented_fingerprint': mismatch['presented_fingerprint'],
-                    'allow_legacy_algorithms': config['allow_legacy_algorithms'],
+                    'allow_legacy_algorithms': plans[index].get('allow_legacy_algorithms', config['allow_legacy_algorithms']),
                     'send_ctrl_y': config['send_ctrl_y'], 'source_job': job['id'], 'position': index,
                 })
         _persist_host(store, job, index, result)
@@ -246,7 +261,10 @@ def record_outcome(store, previous, state, error):
     plans = plans_for(config)
     command_count = len(plans[0]['command_specs'])
     audit_details = {**stats, 'mode': 'matrix', 'host count': config['host_count'],
-                     'command count': command_count, 'legacy SSH compatibility': config['allow_legacy_algorithms']}
+                     'command count': command_count, 'legacy SSH compatibility': (any(p.get('allow_legacy_algorithms', False) for p in plans)
+                         if config.get('host_options') is not None else config['allow_legacy_algorithms']),
+                     'unrecognized key exceptions': sum(p.get('allow_unknown_hosts', config['allow_unknown_hosts']) for p in plans),
+                     'legacy algorithm exceptions': sum(p.get('allow_legacy_algorithms', config['allow_legacy_algorithms']) for p in plans)}
     state = job['state']
     # A finished worker is not proof that each host's commands succeeded.
     # Use the same outcome for activity, audit, and the case journal.
