@@ -1147,6 +1147,8 @@ def run_ssh_host_plans(
                 "label": label,
                 "command_specs": command_specs,
                 "required_host_key_fingerprint": required_host_key_fingerprint,
+                "allow_unknown_hosts": bool(plan.get('allow_unknown_hosts', allow_unknown_hosts)),
+                "allow_legacy_algorithms": bool(plan.get('allow_legacy_algorithms', allow_legacy_algorithms)),
             }
         )
     if not normalized_plans:
@@ -1168,8 +1170,8 @@ def run_ssh_host_plans(
                 before_host(index, plan)
             result = _ssh_host(
                 plan["host"], username, password, plan["command_specs"], port,
-                allow_unknown_hosts, send_ctrl_y, command_delay, plan["label"],
-                allow_legacy_algorithms, per_host_capture_limit,
+                plan["allow_unknown_hosts"], send_ctrl_y, command_delay, plan["label"],
+                plan["allow_legacy_algorithms"], per_host_capture_limit,
                 plan["required_host_key_fingerprint"], instance_path,
             )
             if after_host:

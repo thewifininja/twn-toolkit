@@ -22237,6 +22237,14 @@ body.remote-terminal-resizing * {
   color: var(--muted);
 }
 
+.multi-ssh-host-choices-list {
+  display: grid;
+  gap: 0.75rem;
+  max-height: 24rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
 .multi-ssh-exact-plan {
   border: 1px solid var(--line);
   margin-top: 10px;
