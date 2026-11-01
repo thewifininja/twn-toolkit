@@ -335,7 +335,8 @@
     // Review only resolves saved commands locally. Never send credentials or
     // connection permissions as part of an automatic review request.
     ['username', 'password', 'confirm_execution', 'unknown_key_hosts',
-      'legacy_algorithm_hosts', 'allow_unknown_hosts', 'allow_legacy_algorithms'].forEach((name) => body.delete(name));
+      'legacy_algorithm_hosts', 'allow_unknown_hosts', 'allow_legacy_algorithms',
+      'per_host_options', 'connection_choices_draft', 'runbook_draft', 'preview_token'].forEach((name) => body.delete(name));
     body.set('action', 'preview');
     if (token) token.value = '';
     if (runButton) runButton.disabled = true;
@@ -398,6 +399,8 @@
   });
 
   const updateRunSummary = () => {
+    // Direct/legacy previews have no runbook; their refresh stays available.
+    if (!runbook) return;
     const rows = [...(runbook?.querySelectorAll("[data-ssh-runbook-action]") || [])];
     const selected = rows.length;
     if (runbookState) {

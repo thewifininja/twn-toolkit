@@ -155,3 +155,24 @@ def test_allow_unknown_never_overwrites_a_changed_key(review):
     forget.assert_not_called()
     first.save_host_keys.assert_not_called()
     second.save_host_keys.assert_not_called()
+
+
+def test_direct_legacy_port_refresh_requires_explicit_admission(review):
+    import re
+    app, client, _ = review
+    form = dict(action='preview', matrix='Name | Host\nLegacy | legacy.test',
+                commands='show status', port='22')
+    def token(page):
+        assert page.status_code == 200
+        return re.search(rb'name="preview_token" type="hidden" value="([^"]+)"', page.data)[1].decode()
+    original = token(client.post('/tools/multi-ssh', data=form))
+    run_form = {**form, 'action': 'run', 'port': '2222', 'preview_token': original,
+                'username': 'fixture', 'password': 'fixture-only', 'confirm_execution': 'on'}
+    assert client.post('/tools/multi-ssh', data=run_form, headers={'Accept':'application/json'}).status_code == 400
+    refreshed = token(client.post('/tools/multi-ssh', data={**form, 'port':'2222'}))
+    store = DiagnosticJobStore(app.instance_path)
+    assert store.recent('test-user', 'bulk_ssh') == []
+    response = client.post('/tools/multi-ssh', data={**run_form, 'preview_token':refreshed}, headers={'Accept':'application/json'})
+    assert response.status_code == 202
+    config = store.get(response.json['job_id'], 'test-user')['config']
+    assert config['port'] == 2222 and config['host_options'] is None
