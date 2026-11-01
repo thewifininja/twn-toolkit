@@ -22,19 +22,19 @@
 <fieldset class="form" data-ssh-host-choices>
   <legend>Connection choices for this run</legend>
   <p class="field-note">Known keys are verified normally. An unrecognized key is rejected unless you allow it for that host. Changed keys always stop the connection and require separate verification. Legacy algorithms stay off unless selected. No choices are saved as defaults.</p>
-  <input type="hidden" name="per_host_options" value="on">
+  <input type="hidden" name="per_host_options" value="on" data-unsaved-ignore>
   {% if preview.plans|length > 1 %}
   <div class="form-grid">
-    <label class="check"><input type="checkbox" data-ssh-choice-all="unknown_key_hosts">Allow unrecognized keys for all {{ preview.plans|length }} listed hosts</label>
-    <label class="check"><input type="checkbox" data-ssh-choice-all="legacy_algorithm_hosts">Allow legacy algorithms for all {{ preview.plans|length }} listed hosts</label>
+    <label class="check"><input data-unsaved-ignore type="checkbox" data-ssh-choice-all="unknown_key_hosts">Allow unrecognized keys for all {{ preview.plans|length }} listed hosts</label>
+    <label class="check"><input data-unsaved-ignore type="checkbox" data-ssh-choice-all="legacy_algorithm_hosts">Allow legacy algorithms for all {{ preview.plans|length }} listed hosts</label>
   </div>
   {% endif %}
   <div class="multi-ssh-host-choices-list">
   {% for plan in preview.plans %}
   <div class="multi-ssh-exact-plan" role="group" aria-label="Connection choices for {{ plan.host }}">
     <strong>{{ plan.label or plan.host }}{% if plan.label %} · {{ plan.host }}{% endif %} · connection exceptions</strong>
-    <label class="check"><input type="checkbox" name="unknown_key_hosts" value="{{ plan.host }}" {% if plan.host in form.get('unknown_key_hosts', []) %}checked{% endif %}>Allow an unrecognized SSH key for this host in this run</label>
-    <label class="check"><input type="checkbox" name="legacy_algorithm_hosts" value="{{ plan.host }}" {% if plan.host in form.get('legacy_algorithm_hosts', []) %}checked{% endif %}>Allow legacy SSH algorithms for this host (including SHA-1 RSA)</label>
+    <label class="check"><input data-unsaved-ignore type="checkbox" name="unknown_key_hosts" value="{{ plan.host }}" {% if plan.host in form.get('unknown_key_hosts', []) %}checked{% endif %}>Allow an unrecognized SSH key for this host in this run</label>
+    <label class="check"><input data-unsaved-ignore type="checkbox" name="legacy_algorithm_hosts" value="{{ plan.host }}" {% if plan.host in form.get('legacy_algorithm_hosts', []) %}checked{% endif %}>Allow legacy SSH algorithms for this host (including SHA-1 RSA)</label>
   </div>
   {% endfor %}
   </div>

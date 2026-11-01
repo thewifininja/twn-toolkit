@@ -17,6 +17,7 @@ The signed command-plan check remains server enforced. Refresh review is a recov
 - Each host receives only its selected exceptions, even if a request also includes old fleet-wide flags. Unknown/unreviewed host choices are rejected. A changed key still fails verification; allowing an unrecognized key never calls the key replacement/retry path.
 - The existing separately confirmed, fingerprint-pinned changed-key retry remains intact. Its retry token carries the specific host's legacy setting.
 - Admission continues to use the signed-preview receipt for deduplication. Repeated submissions recover the same job. Cancellation, durable intent, interruption outcomes and access/ownership checks retain their existing implementation.
+- Automatic token/choice-control generation does not make an untouched form dirty. Changes to the runbook and explicit connection choices are tracked separately by the existing unsaved-draft guard. Browser reload completed normally after automatic review; checking an exception produced a tracked draft that survived refresh.
 - Review errors preserve the current credential fields and choices. Automatic requests never serialize credentials. An accepted submission clears the password through the existing job UI.
 
 ## Validation coverage
