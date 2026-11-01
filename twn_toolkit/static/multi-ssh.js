@@ -303,7 +303,18 @@
   const runButton = runForm.querySelector('[data-ssh-run-button]');
   let reviewGeneration = 0;
   let reviewTimer;
+  const choicesState = runForm.querySelector('[data-ssh-choices-state]');
+  const readChoices = () => JSON.stringify([...runForm.querySelectorAll(
+    '[name="unknown_key_hosts"]:checked, [name="legacy_algorithm_hosts"]:checked')]
+    .map((field) => [field.name, field.value]));
+  const initialChoices = readChoices();
+  const runbookState = runForm.querySelector('[data-ssh-runbook-state]');
+  const initialRunbook = JSON.stringify(selectedNames());
   const syncChoiceGroups = () => {
+    if (choicesState) {
+      const current = readChoices();
+      choicesState.value = current === initialChoices ? '' : current;
+    }
     reviewContent?.querySelectorAll('[data-ssh-choice-all]').forEach((all) => {
       const fields = [...reviewContent.querySelectorAll(`input[name="${all.dataset.sshChoiceAll}"]`)];
       const checked = fields.filter((field) => field.checked).length;
@@ -375,6 +386,7 @@
     } else {
       // Removing the last action cancels this draft plan and its exceptions.
       reviewContent.textContent = 'No command plan to review. Add an action to this run.';
+      syncChoiceGroups();
       status.textContent = 'Add at least one CLI action. Nothing has run.';
     }
   };
@@ -388,6 +400,10 @@
   const updateRunSummary = () => {
     const rows = [...(runbook?.querySelectorAll("[data-ssh-runbook-action]") || [])];
     const selected = rows.length;
+    if (runbookState) {
+      const current = JSON.stringify(rows.map((row) => row.dataset.sshRunbookAction));
+      runbookState.value = current === initialRunbook ? '' : current;
+    }
     rows.forEach((row, index) => {
       row.querySelector("[data-ssh-runbook-number]").textContent = String(index + 1);
       const up = row.querySelector('[data-ssh-runbook-move="up"]');
