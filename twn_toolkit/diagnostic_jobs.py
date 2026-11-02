@@ -198,9 +198,19 @@ class DiagnosticJobStore:
         job["summary"] = json.loads(self.cipher.open(job["summary"], job_id + ":diagnostic-summary"))
         return job
 
-    def recent(self, user_id, tool="tcp_scan"):
+    def recent(self, user_id, tool="tcp_scan", *, include_summary=False):
+        columns = "id,state,created,summary" if include_summary else "id,state,created"
         with self.connect() as db:
-            return [dict(row) for row in db.execute("SELECT id,state,created FROM diagnostic_jobs WHERE user_id=? AND tool=? ORDER BY created DESC LIMIT 10", (user_id, tool))]
+            rows = [dict(row) for row in db.execute(f"SELECT {columns} FROM diagnostic_jobs WHERE user_id=? AND tool=? ORDER BY created DESC LIMIT 10", (user_id, tool))]
+        if include_summary:
+            for row in rows:
+                try:
+                    row["summary"] = json.loads(self.cipher.open(row["summary"], row["id"] + ":diagnostic-summary"))
+                except (ValueError, TypeError):
+                    # A damaged history summary is unconfirmed, never a reason
+                    # to hide every other retained run or imply success.
+                    row["summary"] = {}
+        return rows
 
     def cancel(self, job_id, user_id):
         with self.connect(write=True) as db:

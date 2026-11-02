@@ -14,13 +14,15 @@
         });
         if (!response.ok) throw new Error("Status unavailable");
         const job = await response.json();
+        const heading = panel.querySelector("[data-diagnostic-heading]");
+        if (heading && job.display_label) heading.textContent = `${heading.dataset.diagnosticLabel} · ${job.display_label}`;
         if (!["queued", "running", "cancel_requested"].includes(job.state)) {
           const draftForm = document.getElementById(panel.dataset.diagnosticDraftForm || "");
           if (draftForm && window.TwnUnsavedForms?.hasChanges(draftForm)) {
             const link = document.createElement("a");
             link.href = window.location.href;
             link.textContent = "View retained result";
-            status.replaceChildren(document.createTextNode("Run finished. Your new settings are still here. "), link);
+            status.replaceChildren(document.createTextNode(`${job.display_label || "Run finished"}. Your new settings are still here. `), link);
             link.addEventListener("click", (event) => {
               event.preventDefault();
               if (window.confirm("Discard your new settings and view this run's result?")) {
@@ -33,9 +35,9 @@
           window.location.reload();
           return;
         }
-        status.textContent = job.state === "cancel_requested" ? "Cancellation requested — waiting for the run to stop." :
+        status.textContent = job.display_message || (job.state === "cancel_requested" ? "Cancellation requested — waiting for the run to stop." :
           job.state === "running" ? (job.stage ? `Run in progress: ${job.stage}. You can leave this page.` : "Run in progress. You can leave this page and return to the result link.") :
-          "Queued — waiting for the diagnostic scheduler. You can leave this page.";
+          "Queued — waiting for the diagnostic scheduler. You can leave this page.");
       } catch (_) {
         status.textContent = "Unable to refresh status. Retrying; refreshing this page will not submit another run.";
       }
