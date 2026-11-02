@@ -11,11 +11,12 @@ module.exports = async function checkContinuity(source) {
     after(element) { this.afterElement = element; }
   }
   const reply = (state, status = 200) => ({ ok: status < 400, status, headers: { get: () => "application/json" }, json: async () => ({ state }) });
-  class FixtureURL { constructor(value) { this.pathname = value.replace(/^https?:\/\/[^/]+/, "").split("?")[0]; } }
+  class FixtureURL { constructor(value) { const parts = value.replace(/^https?:\/\/[^/]+/, "").split("#")[0].split("?"); this.pathname = parts[0]; this.search = parts[1] ? "?" + parts[1] : ""; } }
   function setup({ dirty = false, guard = true, protectedForm = true } = {}) {
     const panel = new Element("section"), status = new Element("p"), state = new Element("span"), form = new Element("form"), cancel = new Element("button"), link = new Element("a");
     const draft = { value: "new unsent settings" };
     panel.dataset = { diagnosticStatusUrl: "/owned/old/status", diagnosticResultUrl: "/owned/old?job=first" };
+    form.method = "post"; form.target = "";
     form.action = "https://fixture.test/owned/old/cancel";
     form.querySelector = () => cancel;
     panel.querySelector = selector => ({ "[data-diagnostic-status]": status, "[data-diagnostic-state]": state, "[data-diagnostic-cancel]": form, "[data-diagnostic-result-link]": link })[selector] || null;
@@ -38,7 +39,7 @@ module.exports = async function checkContinuity(source) {
       return next;
     };
     class FormData { constructor(target) { this.target = target; } }
-    new Function("document", "window", "fetch", "AbortSignal", "FormData", "URL", source)(document, window, fetch, { timeout: () => ({}) }, FormData, FixtureURL);
+    new Function("document", "window", "fetch", "AbortSignal", "FormData", "URL", "HTMLFormElement", source)(document, window, fetch, { timeout: () => ({}) }, FormData, FixtureURL, Element);
     return { panel, status, state, form, cancel, link, draft, calls, responses, timers, events, docEvents,
       get reloads() { return reloads; },
       tick: async () => { const first = timers.entries().next().value; assert(first, "Expected scheduled poll"); timers.delete(first[0]); await first[1](); },
@@ -122,6 +123,52 @@ module.exports = async function checkContinuity(source) {
   await test("login redirect pauses status polling without losing the draft", async () => {
     const f = setup({ dirty: true }); f.responses.push({ ok: true, status: 200, redirected: true, url: "https://fixture.test/login" }); await f.tick();
     assert(!f.timers.size && f.status.textContent.includes("Sign in again") && !f.reloads, "Expired session was not actionable");
+  });
+  await test("unchanged native POST is protected while the previous run finishes", async () => {
+    const f = setup(); const event = { target: f.form, defaultPrevented: false };
+    f.events.submit(event); await flush();
+    f.responses.push(reply("succeeded")); await f.tick();
+    assert(!f.reloads && f.link.target === "_blank" && f.status.textContent.includes("new request"), "Old completion interrupted native submission");
+    assert(f.calls.every(x => !x.options.method), "Observer repeated the native POST");
+  });
+  await test("later submit cancellation does not leave navigation pending", async () => {
+    const f = setup(); const event = { target: f.form, defaultPrevented: false };
+    f.events.submit(event); event.defaultPrevented = true; await flush();
+    f.responses.push(reply("succeeded")); await f.tick();
+    assert(f.reloads === 1, "Cancelled submission left pending navigation protection forever");
+  });
+  await test("async prevented and new-tab forms do not fence the current page", async () => {
+    for (const kind of ["prevented", "new-tab", "dialog"]) {
+      const f = setup(); if (kind === "new-tab") f.form.target = "_blank"; if (kind === "dialog") f.form.method = "dialog";
+      f.events.submit({ target: f.form, defaultPrevented: kind === "prevented" }); await flush();
+      f.responses.push(reply("succeeded")); await f.tick();
+      assert(f.reloads === 1, "Non-navigation form blocked clean completion: " + kind);
+    }
+  });
+  await test("pageshow clears stale native intent without resetting editor state", async () => {
+    const f = setup(); f.events.submit({ target: f.form, defaultPrevented: false }); await flush();
+    f.events.pageshow(); f.responses.push(reply("succeeded")); await f.tick();
+    assert(f.reloads === 1 && f.draft.value === "new unsent settings", "Restoration retained native intent or changed field values");
+  });
+  await test("network cancellation failure does not retry POST", async () => {
+    const f = setup({ dirty: true }); f.responses.push(() => { throw new TypeError("Network failed"); }, reply("running"));
+    await f.form.events.submit({ preventDefault() {} }); await flush();
+    assert(f.form.afterElement.textContent.includes("could not be confirmed"), "Uncertain network cancellation was hidden");
+    assert(f.calls.filter(x => x.options.method === "POST").length === 1 && !f.reloads, "Uncertain network cancellation repeated or lost draft");
+  });
+  await test("timed-out cancellation does not retry POST", async () => {
+    const f = setup({ dirty: true }); f.responses.push(() => { throw Object.assign(new Error("Timed out"), { name: "TimeoutError" }); }, reply("running"));
+    await f.form.events.submit({ preventDefault() {} }); await flush();
+    assert(f.form.afterElement.textContent.includes("never retried automatically"), "Timeout cancellation message unclear");
+    assert(f.calls.filter(x => x.options.method === "POST").length === 1 && f.draft.value === "new unsent settings", "Timed-out cancellation repeated or lost draft");
+  });
+  await test("unknown cancellation response remains uncertain and never replays", async () => {
+    for (const response of [{ ok: true, redirected: false }, { ok: true, redirected: true, url: "https://fixture.test/owned/old?job=different" }]) {
+      const f = setup({ dirty: true }); f.responses.push(response, reply("running"));
+      await f.form.events.submit({ preventDefault() {} }); await flush();
+      assert(f.form.afterElement.textContent.includes("could not be confirmed"), "Unexpected response claimed cancellation");
+      assert(f.calls.filter(x => x.options.method === "POST").length === 1 && !f.reloads, "Unknown cancellation response repeated POST or discarded draft");
+    }
   });
   return results;
 };

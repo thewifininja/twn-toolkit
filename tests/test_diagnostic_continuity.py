@@ -59,10 +59,12 @@ def test_cancel_and_result_navigation_preserve_owned_job_boundary(continuity, to
     assert client.get(f'{path}?job={foreign_id}').status_code == 404
     assert client.get(f'{path}/jobs/{foreign_id}/status').status_code == 404
     assert client.post(f'{path}/jobs/{foreign_id}/cancel').status_code == 404
-    response = client.post(f'{path}/jobs/{job_id}/cancel', headers={'Accept': 'application/json'})
-    assert response.status_code == 303
+    page = client.get(submitted.location, environ_overrides={'SCRIPT_NAME': '/agents/fixture/ui'}).data.decode()
+    result_url = re.search(r'data-diagnostic-result-url="([^"]+)"', page).group(1)
+    response = client.post(f'{path}/jobs/{job_id}/cancel', headers={'Accept': 'application/json'}, environ_overrides={'SCRIPT_NAME': '/agents/fixture/ui'})
+    assert response.status_code == 303 and response.location == result_url
     assert store.get(job_id, 'test-user')['state'] == 'cancelled'
-    assert client.get(response.location).status_code == 200
+    assert client.get(submitted.location).status_code == 200
     # Reading/revisiting/cancelling an already terminal job never queues work.
     assert client.post(f'{path}/jobs/{job_id}/cancel').status_code == 303
     assert len(store.recent('test-user', tool)) == 1
@@ -132,3 +134,63 @@ def test_browser_fixture_has_real_retained_results_and_controlled_failures(tmp_p
     assert client.post(tcp['path'], data={'hosts': 'never-execute.test'}).status_code == 403
     counts = json.loads(Path(info['counts']).read_text())
     assert counts['submit'] == 1 and counts['cancel'] == 1
+
+
+def test_recent_is_one_snapshot_during_worker_completion(continuity, monkeypatch):
+    from contextlib import contextmanager
+    app, client, store = continuity
+    job_id = store.enqueue(user_id='owner', tool='dns', config={})
+    with store.connect(write=True) as db:
+        db.execute("UPDATE diagnostic_jobs SET state='running' WHERE id=?", (job_id,))
+    original_connect = store.connect
+    triggered = False
+    statements = []
+
+    class Connection:
+        def __init__(self, db): self.db = db
+        def execute(self, sql, parameters=()):
+            nonlocal triggered
+            cursor = self.db.execute(sql, parameters)
+            if 'SELECT id,state,created FROM diagnostic_jobs' in sql:
+                statements.append(sql)
+                if not triggered:
+                    triggered = True
+                    with original_connect(write=True) as worker:
+                        worker.execute("UPDATE diagnostic_jobs SET state='succeeded',completed=123 WHERE id=?", (job_id,))
+            return cursor
+
+    @contextmanager
+    def concurrent_connect(*, write=False):
+        with original_connect(write=write) as db:
+            yield Connection(db)
+
+    monkeypatch.setattr(store, 'connect', concurrent_connect)
+    rows = store.recent('owner', 'dns')
+    assert triggered
+    assert len(statements) == 1
+    assert len(rows) == 1 and rows[0]['id'] == job_id
+    assert rows[0]['state'] in ('running', 'succeeded')
+    with original_connect() as db:
+        assert db.execute('SELECT state FROM diagnostic_jobs WHERE id=?', (job_id,)).fetchone()[0] == 'succeeded'
+
+
+def test_slow_native_post_fixture_enqueues_only_explicit_synthetic_work(tmp_path):
+    import importlib.util
+    import json
+    from pathlib import Path
+    spec = importlib.util.spec_from_file_location('native_fixture', Path(__file__).parent / 'fixtures' / 'diagnostic_continuity_app.py')
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    app, info = module.build_fixture(tmp_path, baseline_client='// immutable test baseline')
+    client = app.test_client(); old = info['jobs']['dns']
+    control = {'baseline_client': True, 'native_post': {'dns': True}, 'post_delay': {'dns': 0}, 'complete_during_post': {'dns': True}}
+    Path(info['control']).write_text(json.dumps(control))
+    baseline = client.get('/static/diagnostic-job.js')
+    assert baseline.status_code == 200 and baseline.data == b'// immutable test baseline'
+    response = client.post(old['path'], data=CASES[1][3])
+    assert response.status_code == 303 and response.location != old['url']
+    store = DiagnosticJobStore(tmp_path)
+    assert store.get(old['id'], 'test-user')['state'] == 'succeeded'
+    new_id = response.location.split('job=')[1]
+    assert store.get(new_id, 'test-user')['state'] == 'queued'
+    counts = json.loads(Path(info['counts']).read_text())
+    assert counts['submit'] == 1 and counts['native_responses'] == [{'status': 303, 'location': response.location}]

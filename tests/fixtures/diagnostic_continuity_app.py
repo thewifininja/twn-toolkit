@@ -13,18 +13,23 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from flask import abort, request
+from flask import Response, abort, request
 from twn_toolkit import create_app
 from twn_toolkit.diagnostic_jobs import DiagnosticJobStore
 from twn_toolkit.distributed_agents import DistributedSettingsStore
+from twn_toolkit.operational import OperationalSettingsStore
 
 
-def build_fixture(directory):
+def build_fixture(directory, baseline_client=None):
     root = Path(directory).resolve()
     app = create_app(str(root)); app.testing = True
     app.config['SESSION_COOKIE_NAME'] = 'twn_continuity_fixture'
     app.jinja_env.auto_reload = True
     assert DistributedSettingsStore(str(root)).get()['role'] == 'standalone'
+    # Extra synthetic admission headroom permits repeated slow-POST browser
+    # probes. No production policy is loaded or modified.
+    policy = OperationalSettingsStore(str(root))
+    policy.save({**policy.get(), 'diagnostic_user_limit': 20})
     client = app.test_client()
     cases = {
         'tcp': ('/tools/port-scanner', dict(hosts='old.test', ports='443', timeout='.1', concurrency='1')),
@@ -63,6 +68,8 @@ def build_fixture(directory):
         for key, state in current.get('states', {}).items():
             if key in jobs and state in {'queued', 'running', 'cancel_requested', 'succeeded', 'failed', 'cancelled', 'unknown'} and applied.get(key) != state:
                 set_state(key, state); applied[key] = state
+        if request.path == '/static/diagnostic-job.js' and current.get('baseline_client') and baseline_client is not None:
+            return Response(baseline_client, mimetype='application/javascript', headers={'Cache-Control': 'no-store'})
         if request.path.startswith('/static/') or request.path in {'/fixture', '/session/activity', '/tools/live-sessions'}:
             return
         matching = next((key for key, job in jobs.items() if request.path.startswith(job['path'])), None)
@@ -83,12 +90,26 @@ def build_fixture(directory):
         elif request.method == 'POST':
             counts['submit'] += 1
             (root / 'counts.json').write_text(json.dumps(counts))
-            # The browser checks never need to run a new diagnostic. Preserve
-            # the explicit boundary and make any accidental submission visible.
-            abort(403)
+            # Slow native admission is opt-in and fixture-only. It can enqueue a
+            # synthetic job but never launches a worker or executes diagnostics.
+            if request.path != jobs[matching]['path'] or not current.get('native_post', {}).get(matching):
+                abort(403)
+            delay = max(0, min(15, float(current.get('post_delay', {}).get(matching, 0))))
+            time.sleep(delay / 2)
+            if current.get('complete_during_post', {}).get(matching):
+                set_state(matching, 'succeeded')
+            time.sleep(delay / 2)
+            request.environ['twn.fixture_native_post'] = True
         else:
             counts['get'] += 1
         (root / 'counts.json').write_text(json.dumps(counts))
+
+    @app.after_request
+    def record_native_admission(response):
+        if request.environ.get('twn.fixture_native_post'):
+            counts.setdefault('native_responses', []).append({'status': response.status_code, 'location': response.headers.get('Location', '')})
+            (root / 'counts.json').write_text(json.dumps(counts))
+        return response
 
     @app.get('/fixture')
     def fixture_index():
@@ -108,9 +129,9 @@ def build_fixture(directory):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(); parser.add_argument('--port', type=int, default=5104)
+    parser = argparse.ArgumentParser(); parser.add_argument('--port', type=int, default=5104); parser.add_argument('--baseline-client')
     args = parser.parse_args()
-    app, info = build_fixture(tempfile.mkdtemp(prefix='twn-continuity-ui-'))
+    app, info = build_fixture(tempfile.mkdtemp(prefix='twn-continuity-ui-'), Path(args.baseline_client).read_text() if args.baseline_client else None)
     print(json.dumps(info), flush=True)
     # This entrypoint does not launch twn, workers, schedulers or enrolled agents.
     with patch.object(socket, 'create_connection', side_effect=AssertionError('No fixture outbound connections')):
