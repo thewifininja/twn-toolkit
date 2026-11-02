@@ -22518,4 +22518,18 @@ body.remote-terminal-resizing * {
 .multi-ssh-inline-fields { grid-column: 1 / -1; min-width: 0; }
 .multi-ssh-inline-fields > .form { padding-top: 10px; }
 .multi-ssh-run-form > .multi-ssh-workspace-card { margin-bottom: 12px; }
-[data-ssh-library-editor] > summary { margin-bottom: 12px; }
+
+/* Native disclosures must not inherit grid tracks for their hidden contents. */
+details.multi-ssh-exact-plan.multi-ssh-workspace-card {
+  display: block;
+  padding: 0;
+}
+
+details.multi-ssh-exact-plan.multi-ssh-workspace-card > summary {
+  margin: 0;
+  padding: 12px;
+}
+
+details.multi-ssh-exact-plan.multi-ssh-workspace-card[open] > :not(summary) {
+  margin: 0 12px 12px;
+}
