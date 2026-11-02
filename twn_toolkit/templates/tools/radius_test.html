@@ -13,7 +13,7 @@
     <span>Run tests</span><small>Authenticate against one or more saved servers</small>
   </button>
   <button id="radius-profiles-tab" type="button" role="tab" data-workspace-tab="profiles" aria-controls="radius-profiles-panel" aria-selected="{{ 'true' if initial_radius_tab == 'profiles' else 'false' }}">
-    <span>Profiles</span><small>{{ servers|length + credentials|length + attribute_profiles|length }} saved servers, credentials, and attribute sets</small>
+    <span>Profiles</span><small data-network-count="profiles">{{ servers|length + credentials|length + attribute_profiles|length }} saved servers, credentials, and attribute sets</small>
   </button>
 </nav>
 
@@ -134,7 +134,7 @@
   {{ section_header("RADIUS profiles", "Profiles are reusable across tests. Saved secrets and passwords are never rendered back into this page.", class_name="profile-manager-head") }}
 
   <div class="access-profile-list radius-profile-groups saved-profile-library">
-  {% call profile_section("RADIUS servers", servers|length ~ " saved · Shared secrets are write-only", not servers, "radius-profile-section") %}
+  {% call profile_section("RADIUS servers", servers|length ~ " saved · Shared secrets are write-only", not servers, "radius-profile-section network-section-servers") %}
     {% call profile_create("New server", not servers) %}
       <form class="form radius-profile-form" data-unsaved-form data-kind="servers">
         <input data-unsaved-ignore name="original_name" type="hidden">
@@ -167,7 +167,7 @@
     </div>
   {% endcall %}
 
-  {% call profile_section("Test credentials", credentials|length ~ " saved · Passwords are write-only", not credentials, "radius-profile-section") %}
+  {% call profile_section("Test credentials", credentials|length ~ " saved · Passwords are write-only", not credentials, "radius-profile-section network-section-credentials") %}
     {% call profile_create("New credential", not credentials) %}
       <form class="form radius-profile-form" data-unsaved-form data-kind="credentials">
         <input data-unsaved-ignore name="original_name" type="hidden">
@@ -198,7 +198,7 @@
     </div>
   {% endcall %}
 
-  {% call profile_section("Request attributes", attribute_profiles|length ~ " saved · Optional PAP/CHAP Access-Request additions", false, "radius-profile-section") %}
+  {% call profile_section("Request attributes", attribute_profiles|length ~ " saved · Optional PAP/CHAP Access-Request additions", false, "radius-profile-section network-section-attributes") %}
     {% call profile_create("New attributes", not attribute_profiles) %}
       <form class="form radius-profile-form" data-unsaved-form data-kind="attributes">
         <input data-unsaved-ignore name="original_name" type="hidden">
@@ -236,6 +236,7 @@
 </div>
 <script src="{{ url_for('static', filename='radius-test.js', v=asset_version) }}"></script>
 <script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
+<script src="{{ url_for('static', filename='network-profile-receipt.js', v=asset_version) }}"></script>
 <script src="{{ url_for('static', filename='network-profile-editor.js', v=asset_version) }}"></script>
 </div>
 {% endblock %}

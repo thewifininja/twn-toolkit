@@ -13,13 +13,13 @@
   <div class="button-row"><button class="secondary" type="button" data-profile-choices-refresh>Refresh saved choices</button><a class="button-link secondary" target="_blank" rel="noopener" href="{{ url_for('tools.snmp_test', profiles='1') }}">Open saved library in a new tab</a><span role="status" data-profile-choice-status></span></div>
   <nav class="tool-workspace-tabs snmp-workspace-tabs" role="tablist" aria-label="SNMP workspace">
     <button id="snmp-tests-tab" type="button" role="tab" data-workspace-tab="tests" aria-controls="snmp-tests-panel" aria-selected="{{ 'true' if initial_snmp_tab == 'tests' else 'false' }}">
-      <span>Run tests</span><small>{{ hosts|length }} host{{ '' if hosts|length == 1 else 's' }} · {{ oid_profiles|length }} collection{{ '' if oid_profiles|length == 1 else 's' }}</small>
+      <span>Run tests</span><small data-network-count="run">{{ hosts|length }} host{{ '' if hosts|length == 1 else 's' }} · {{ oid_profiles|length }} collection{{ '' if oid_profiles|length == 1 else 's' }}</small>
     </button>
     <button id="snmp-monitor-tab" type="button" role="tab" data-workspace-tab="monitor" aria-controls="snmp-monitor-panel" aria-selected="{{ 'true' if initial_snmp_tab == 'monitor' else 'false' }}">
       <span>Bandwidth monitor</span><small>Live interface graphs</small>
     </button>
     <button id="snmp-profiles-tab" type="button" role="tab" data-workspace-tab="profiles" aria-controls="snmp-profiles-panel" aria-selected="false">
-      <span>Profiles</span><small>{{ credentials|length + hosts|length + oid_profiles|length }} saved items</small>
+      <span>Profiles</span><small data-network-count="profiles">{{ credentials|length + hosts|length + oid_profiles|length }} saved items</small>
     </button>
   </nav>
 
@@ -27,7 +27,7 @@
 <section class="panel snmp-management-panel saved-profile-library-panel">
   {{ section_header("SNMP profiles", "Manage credentials, target hosts, and reusable OID collections. Secret values are never rendered back into this page.", class_name="profile-manager-head") }}
   <div class="access-profile-list snmp-management-list saved-profile-library">
-    {% call profile_section("SNMP credentials", credentials|length ~ " saved · SNMPv2c communities and SNMPv3 credentials", not credentials, "snmp-manager-details") %}
+    {% call profile_section("SNMP credentials", credentials|length ~ " saved · SNMPv2c communities and SNMPv3 credentials", not credentials, "snmp-manager-details network-section-credentials") %}
       {% call profile_create("New credential", not credentials) %}
         <form class="form snmp-profile-form" data-unsaved-form data-kind="credentials" data-save-url="{{ url_for('tools.save_snmp_profile', kind='credentials') }}" data-delete-url="{{ url_for('tools.delete_snmp_profile', kind='credentials') }}">
           <input data-unsaved-ignore name="original_name" type="hidden">
@@ -135,7 +135,7 @@
       </div>
     {% endcall %}
 
-    {% call profile_section("Hosts", hosts|length ~ " saved · Devices mapped to saved SNMP credentials", not hosts, "snmp-manager-details") %}
+    {% call profile_section("Hosts", hosts|length ~ " saved · Devices mapped to saved SNMP credentials", not hosts, "snmp-manager-details network-section-hosts") %}
       {% call profile_create("New host", not hosts) %}
         <form class="form snmp-profile-form" data-unsaved-form data-kind="hosts" data-save-url="{{ url_for('tools.save_snmp_profile', kind='hosts') }}" data-delete-url="{{ url_for('tools.delete_snmp_profile', kind='hosts') }}">
           <input data-unsaved-ignore name="original_name" type="hidden">
@@ -176,7 +176,7 @@
       </div>
     {% endcall %}
 
-    {% call profile_section("OID profiles", oid_profiles|length ~ " saved · Reusable GET and subtree-walk collections", not oid_profiles, "snmp-manager-details") %}
+    {% call profile_section("OID profiles", oid_profiles|length ~ " saved · Reusable GET and subtree-walk collections", not oid_profiles, "snmp-manager-details network-section-oids") %}
       {% call profile_create("New OID profile", not oid_profiles) %}
         <form class="form snmp-profile-form" data-unsaved-form data-kind="oids" data-save-url="{{ url_for('tools.save_snmp_profile', kind='oids') }}" data-delete-url="{{ url_for('tools.delete_snmp_profile', kind='oids') }}">
           <input data-unsaved-ignore name="original_name" type="hidden">
@@ -391,6 +391,7 @@
 
 <script src="{{ url_for('static', filename='snmp-test.js', v=asset_version) }}"></script>
 <script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
+<script src="{{ url_for('static', filename='network-profile-receipt.js', v=asset_version) }}"></script>
 <script src="{{ url_for('static', filename='network-profile-editor.js', v=asset_version) }}"></script>
 <script src="{{ url_for('static', filename='snmp-interface-monitor.js') }}"></script>
 {% endblock %}
