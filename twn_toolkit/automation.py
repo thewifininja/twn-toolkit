@@ -416,6 +416,25 @@ class AutomationStore:
             )
         return definition_id
 
+    def builder_choices(self) -> dict[str, list[dict[str, str]]]:
+        """Labels/references only: refreshing a draft never decrypts credentials."""
+        choices = {'conditions': [], 'schedules': [], 'actions': []}
+        with self._connect() as connection:
+            rows = connection.execute("""SELECT id,name,type,'source' AS kind FROM automation_conditions
+                UNION ALL SELECT id,name,type,'action' AS kind FROM automation_actions
+                ORDER BY name COLLATE NOCASE, id""")
+            for row in rows:
+                if row['kind'] == 'action':
+                    group = 'actions'
+                elif row['type'] == 'schedule.calendar':
+                    group = 'schedules'
+                elif row['type'] not in AUTOMATION_REGISTRY.triggers:
+                    group = 'conditions'
+                else:
+                    continue
+                choices[group].append({key: str(row[key]) for key in ('id', 'name', 'type')})
+        return choices
+
     def condition_definitions(self) -> list[dict[str, Any]]:
         return [
             item
