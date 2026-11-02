@@ -493,6 +493,7 @@
     if (button) button.disabled = true;
     if (status) status.textContent = "Starting remote session…";
     let admissionConfirmed = false;
+    let admittedSession = null;
     const quickControls = button === startButton ? Array.from(form.elements, (field) => [field, field.disabled]) : [];
     quickControls.forEach(([field]) => { field.disabled = true; });
     if (quickControls.length) window.TwnUnsavedForms?.capture(form);
@@ -510,32 +511,41 @@
         throw new Error(data.error || "The remote session could not be started.");
       }
       if (!data.session?.id) throw new Error('Request outcome not confirmed.');
-      admissionConfirmed = true;
-      upsert(data.session);
-      renderList();
-      await openSession(data.session, {reveal: true, focus: true});
-      if (status) {
-        status.textContent = data.session.record_transcript
-          ? "Started with transcript capture attached to the active case."
-          : data.session.investigation_id
-            ? "Started with session activity attached to the active case."
-            : "Session started.";
-      }
-      if (window.TwnLiveTools) window.TwnLiveTools.refresh();
-      document.dispatchEvent(new CustomEvent("twn:remote-session-started", {detail: data.session}));
-      return data.session;
+      admittedSession = data.session;
     } catch (error) {
       const message = admissionConfirmed ? error.message : 'The request outcome was not confirmed. Do not connect again until you check Recent sessions with Refresh recent sessions. Your connection draft remains here.';
       if (status) status.textContent = message;
       else showMessage(message);
       throw error;
     } finally {
+      // Admission ends at the POST receipt, never at a later terminal-output GET.
       quickControls.forEach(([field, disabled]) => { field.disabled = disabled; });
       if (quickControls.length) window.TwnUnsavedForms?.settle(form);
       startPending = false;
       document.dispatchEvent(new CustomEvent('twn:remote-start-pending', {detail: false}));
       if (button) button.disabled = false;
     }
+    const acceptedMessage = admittedSession.record_transcript
+      ? 'Session accepted with transcript capture attached to the active case.'
+      : admittedSession.investigation_id
+        ? 'Session accepted with activity attached to the active case.'
+        : 'Session accepted. Terminal output loads separately.';
+    if (status) status.textContent = acceptedMessage;
+    // A view failure must not turn confirmed admission into a retryable failure,
+    // retain a one-time password, or keep new-connection controls locked.
+    try {
+      upsert(admittedSession);
+      renderList();
+      openSession(admittedSession, {reveal: true, focus: true}).catch(() => {
+        if (selected?.id !== admittedSession.id) return;
+        showMessage('The session was accepted, but its terminal view could not load. Open it from Recent sessions; do not start a replacement to restore output.');
+      });
+    } catch (_error) {
+      showMessage('The session was accepted, but its terminal view could not load. Refresh Recent sessions to open the accepted shell.');
+    }
+    document.dispatchEvent(new CustomEvent("twn:remote-session-started", {detail: admittedSession}));
+    if (window.TwnLiveTools) Promise.resolve().then(() => window.TwnLiveTools.refresh()).catch(() => {});
+    return admittedSession;
   }
 
   async function openSession(session, options = {}) {
@@ -547,6 +557,7 @@
     clearTimeout(checkpointTimer);
     checkpointTimer = null;
     pollGeneration += 1;
+    const openingGeneration = pollGeneration;
     selected = session;
     pollMessage.hidden = true;
     cursor = 0;
@@ -559,7 +570,8 @@
     terminal.reset(sessionColumns(session), sessionRows(session));
     if (reveal) workspace.scrollIntoView({behavior: "smooth", block: "start"});
     updateWorkspace(session);
-    await pollOutput({bootstrap: true, generation: pollGeneration});
+    await pollOutput({bootstrap: true, generation: openingGeneration});
+    if (openingGeneration !== pollGeneration || selected?.id !== session.id) return;
     if (
       focusAfterSync
       && !synchronizing
@@ -587,6 +599,7 @@
       if (!data) {
         const response = await fetch(`${pollingSession.output_url}?after=${requestCursor}${suffix}`, {
           headers: {"Accept": "application/json"},
+          signal: AbortSignal.timeout(10000),
         });
         data = await response.json();
         if (!response.ok) throw new Error(data.error || "Terminal output is unavailable.");
@@ -639,7 +652,8 @@
       }
     } catch (error) {
       if (generation === pollGeneration && selected?.id === pollingSession.id) {
-        pollMessage.textContent = error.message;
+        const reason = ['TimeoutError', 'AbortError'].includes(error.name) ? 'The output request timed out.' : error.message || 'Terminal output could not be loaded.';
+        pollMessage.textContent = `${reason} The session has not been restarted; its connection state is shown above. Output will retry automatically, or open the retained session from Recent sessions.`;
         pollMessage.hidden = false;
       }
     } finally {

@@ -25,11 +25,17 @@ connection draft. This is one complete task batch, not an application-wide sign-
   fields are locked and Cancel/Escape explains that closing does not stop an
   already accepted shell. A bounded request failure keeps the inputs and clearly
   distinguishes an unconfirmed outcome from a validation rejection. There is no
-  automatic retry. This is a client guard, not cross-tab server idempotency.
+  automatic retry. Admission controls unlock when the POST receipt arrives;
+  terminal-output restoration is separate, bounded and fenced against stale
+  selection responses. A missing output response cannot retain a one-time password
+  or lock all new connections. Automatic output retries are reads, not new starts.
+  This is a client guard, not cross-tab server idempotency.
 - **Refresh recent sessions** reloads current owned records without reconnecting.
   This provides a way to check uncertain admission while preserving the draft and
   active shell. Its GET route uses the same permission and ownership checks as the
   existing session manager (including existing orphan-state reconciliation).
+  The response merges recent history with all current owned active shells, so an
+  older live shell is not hidden by the 24-record recent-history limit.
 
 ## Evidence
 
@@ -41,10 +47,13 @@ current saved-host credential resolution and existing permission gate.
 
 - `test_remote_terminal_task_flow`: empty/owned/foreign retained records; stopped,
   error and interrupted states; private control metadata excluded; revoked tool
-  permission rejected; no start/connection call from refresh (**5 passed**).
+  permission rejected; no start/connection call from refresh; active shell older
+  than 25 newer completed records remains present without duplicate IDs
+  (**6 passed**).
 - Existing remote session, connection, library workflow, connection management and
   MSO policy modules: **95 passed, 12 subtests passed**. Combined final focused run:
-  **100 passed, 12 subtests passed** (31.53 seconds).
+  **101 passed, 12 subtests passed** (36.29 seconds, including active-history
+  retention follow-up).
 - Both changed JavaScript files compiled successfully in V8 (syntax only).
 
 **Browser verification pending parent:** this worker's CUA inventory has no
