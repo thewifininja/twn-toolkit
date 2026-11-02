@@ -22556,3 +22556,12 @@ details.multi-ssh-exact-plan.multi-ssh-workspace-card[open] > :not(summary) {
   overflow-wrap: anywhere;
 }
 .remote-quick-connect-dialog footer .tool-status:empty { display: none; }
+
+/* Reused automation library editors keep their save/back controls reachable. */
+dialog.automation-prerequisite-dialog[open] { display: flex; flex-direction: column; width: min(70rem, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: hidden; }
+.automation-prerequisite-dialog > header, .automation-prerequisite-dialog > footer { flex: none; padding: 16px; }
+.automation-prerequisite-dialog > header { border-bottom: 1px solid var(--line); }
+.automation-prerequisite-dialog > footer { border-top: 1px solid var(--line); }
+.automation-prerequisite-dialog > footer p { margin: 0 0 8px; overflow-wrap: anywhere; }
+.automation-prerequisite-body { min-height: 0; overflow: auto; padding: 16px; }
+.automation-prerequisite-body .automation-form { margin: 0; }
