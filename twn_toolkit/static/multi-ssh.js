@@ -124,12 +124,12 @@
     actionForm.addEventListener("submit", (event) => {
       remember();
       if ([...drafts].some(([key, draft]) => key !== current && changed(key, draft))
-        && !window.confirm("Other CLI actions have unsaved drafts. Continue and leave those drafts?")) {
+        && !window.confirm("Other saved command sets have unsaved drafts. Continue and leave those drafts?")) {
         event.preventDefault();
       }
     });
     actionForm.querySelector("[data-ssh-action-delete]")?.addEventListener("click", (event) => {
-      if (!window.confirm(`Delete CLI action “${read().original_name}”?`)) event.preventDefault();
+      if (!window.confirm(`Delete saved command set “${read().original_name}”?`)) event.preventDefault();
     });
   }
 
@@ -238,7 +238,7 @@
       copyActions.checked = true;
       copyDialog.querySelector("[data-ssh-copy-actions-label]").hidden = copyKind !== "matrix";
       copyDialog.querySelector("[data-ssh-copy-note]").textContent = copyKind === "matrix"
-        ? "Copies the current host editor contents into a new local matrix. Saved CLI actions can be included. The original stays unchanged."
+        ? "Copies the current host editor contents into a new local matrix. Saved command sets can be included. The original stays unchanged."
         : "Copies the current action editor contents into this matrix's library. The original stays unchanged; nothing runs.";
       copyDialog.showModal();
       copyName.focus();
