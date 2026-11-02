@@ -653,7 +653,8 @@
     } catch (error) {
       if (generation === pollGeneration && selected?.id === pollingSession.id) {
         const reason = ['TimeoutError', 'AbortError'].includes(error.name) ? 'The output request timed out.' : error.message || 'Terminal output could not be loaded.';
-        pollMessage.textContent = `${reason} The session has not been restarted; its connection state is shown above. Output will retry automatically, or open the retained session from Recent sessions.`;
+        const recovery = active(selected) ? 'Live output will retry automatically; you can also reopen the session from Recent sessions.' : 'Open this retained session again from Recent sessions to retry loading its output.';
+        pollMessage.textContent = `${reason} The session has not been restarted; its connection state is shown above. ${recovery}`;
         pollMessage.hidden = false;
       }
     } finally {
