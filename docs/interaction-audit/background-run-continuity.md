@@ -26,7 +26,8 @@ An unchanged valid native POST also needs protection: its server response can
 still be pending when the previous run finishes. The poller tracks same-tab
 native submission intent synchronously, without copying fields or preventing
 the original submission. After all handlers/unsaved guards run, a cancelled
-`submit` event clears that intent in a microtask. `pageshow` clears stale native
+`submit` event clears that intent in a deferred post-dispatch check. The
+protection also checks the event’s final cancellation flag directly. `pageshow` clears stale native
 intent on history restoration without resetting editor baselines. Async prevented
 submissions, dialog forms and new-tab forms do not set the fence. Direct legacy
 `form.submit()` bypasses native `submit` observers; current inspected diagnostic
@@ -118,13 +119,21 @@ returned 200 for the isolated fixture index and all three synthetic retained-job
 pages. Root later reproduced the native-POST race against the recorded `bd2c18c`
 baseline in the isolated browser fixture: an unchanged valid DNS submission
 received a new admission/303 on the server, while old-run completion reloaded
-the old result page before that acknowledgement reached the browser. Fixed-client
-browser verification and final integrated aggregate remain pending.
+the old result page before that acknowledgement reached the browser. The fenced client then reached the new owned-job acknowledgement after the
+same delayed POST while the old run finished. This is a browser reproduction
+and repair check, not device execution. Final integrated aggregate remains
+pending.
 
 Review follow-up checks add a deterministic second-connection completion during
 the history read and synthetic slow native admission that finishes the old run
-mid-request. The expanded 20-case in-memory model explicitly covers native
+mid-request. The expanded 21-case in-memory model explicitly covers native
 in-flight fencing, later preventDefault, history reset, network throw, timeout
 and unexpected cancellation responses. Cancellation accepts only the expected
 retained-result redirect as an acknowledgement; other responses stay uncertain
 and status remains read-only.
+
+Review follow-up: the affected consumer suite on `40646d0` passed 343 tests and
+37 subtests with the same explicit Node skip. A final post-dispatch cancellation
+check uses a zero-delay task, rather than relying on microtask ordering between
+native event listeners; the model also checks the final cancellation flag and
+retains a read-only result link if a briefly marked submission is later cancelled.
