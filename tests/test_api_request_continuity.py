@@ -141,3 +141,14 @@ def test_next_token_capacity_cannot_discard_confirmed_response(isolated, monkeyp
     assert response.json['next_token'] == ''
     assert response.json['result']['status'] == 200
     assert sender.call_count == 1
+
+
+@pytest.mark.parametrize('field', ['method', 'timeout'])
+def test_invalid_metadata_cannot_persist_secret_markers(isolated, field):
+    client, sender, path = isolated
+    marker = 'PrivateInvalidMetadataFixture'
+    response = send(client, compose(client, **{field: marker}))
+    assert response.status_code == 400 and response.json['dispatched'] is False
+    sender.assert_not_called()
+    for database in path.glob('*.sqlite3'):
+        assert marker.encode() not in database.read_bytes(), database.name

@@ -73,12 +73,17 @@ def register_api_request_routes(tools_bp: Blueprint) -> None:
                 "timeout": request.form.get("timeout", "10").strip(),
                 "verify_tls": request.form.get("verify_tls") == "on",
             }
+            safe_method = form["method"].upper()
+            if safe_method not in {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}:
+                safe_method = "Invalid"
+            safe_timeout = None
             response_status = 400
             recording_warning = ""
             try:
                 parsed_headers = parse_http_headers(form["headers"])
                 timeout = float(form["timeout"])
                 _validate_api_request(form["method"], form["url"], timeout)
+                safe_timeout = timeout
                 if form["method"].upper() not in {"GET", "HEAD", "OPTIONS"} and request.form.get("write_consent") != "yes":
                     raise ToolInputError("Confirm that you intend to send this write request.")
                 if not store().claim(owner(), submitted_token):
@@ -114,7 +119,7 @@ def register_api_request_routes(tools_bp: Blueprint) -> None:
                     recording_warning = "Receipt metadata could not be updated. Do not infer remote failure or resend from this warning."
             try:
                 record_current_activity("HTTP", "Sent API request" if dispatched else "API request not sent",
-                    f"{form['method']} · HTTP {result['status']}" if result else "Response unconfirmed" if dispatched else "Not sent",
+                    f"{safe_method} · HTTP {result['status']}" if result else "Response unconfirmed" if dispatched else "Not sent",
                     counters={"api": {"requests": 1}} if result else {})
                 annotate_tool_run(
                     category="Network tools",
@@ -122,7 +127,7 @@ def register_api_request_routes(tools_bp: Blueprint) -> None:
                     tool_name="API request",
                     outcome="failed" if error else "succeeded",
                     details={
-                        "HTTP method": str(form["method"]).upper(),
+                        "HTTP method": safe_method,
                         "remote status code": result.get("status") if result else None,
                         "TLS verification enabled": bool(form["verify_tls"]),
                     },
@@ -138,12 +143,12 @@ def register_api_request_routes(tools_bp: Blueprint) -> None:
                     summary=(
                         f"API request failed: {error}"
                         if error
-                        else f"Sent {form['method'].upper()} request to {target}: HTTP {result['status']}."
+                        else f"Sent {safe_method} request to {target}: HTTP {result['status']}."
                     ),
                     targets={"origin": target},
                     parameters={
-                        "method": form["method"].upper(),
-                        "timeout_seconds": form["timeout"],
+                        "method": safe_method,
+                        "timeout_seconds": safe_timeout,
                         "verify_tls": form["verify_tls"],
                         "request_header_names": _journal_header_names(form["headers"]),
                         "request_body_bytes": len(form["body"].encode("utf-8")),
