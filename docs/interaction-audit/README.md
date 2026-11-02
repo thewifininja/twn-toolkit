@@ -3,6 +3,12 @@
 Scope: Toolkit user interactions, preserving the established visual character.
 This is an ongoing coverage ledger, not an exhaustive usability sign-off.
 
+Current reconciliation at `84077b4`: [application pass](application-pass.md) and
+[51 task journeys](journeys.csv). The source index now contains 364 route
+declarations, 51 navigation declarations and 94 templates. These are inventory
+counts, not runtime coverage. The original ledger below is historical context;
+newer bounded batch documents supersede its Bulk SSH next-step notes.
+
 ## Inventory and evidence
 
 `inventory.csv` indexes declared routes, template controls/dialogs/disclosures and
@@ -22,7 +28,7 @@ asserted against isolated synthetic state; **inferred** = source reviewed;
 | Flow | Current evidence | Next validation / remaining gap |
 |---|---|---|
 | Dashboard → search / target / favorites | Observed signed-in local dashboard; `internet` no match, `dns` matches; target only This instance | Novice aliases, unavailable-agent explanation, result continuation links; nonadmin and empty account unverified |
-| Bulk SSH hosts → commands → review | Observed original empty state; source-reviewed draft/preview safety; batch changes compact header and add explicit Save & continue | Tested save/validation/no-execution in `test_bulk_ssh_workflow`; full draft/back/reload browser matrix remains unverified |
+| Bulk SSH hosts → commands → review | Through `84077b4`: literal three-step composition, typed/saved ordering, draft/stale review protection and compact disclosures; reported bounded browser checks and exact-head aggregate | See `bulk-ssh-task-flow.md`, `bulk-ssh-run-review.md` and `application-pass.md`; no real-device execution or exhaustive cross-role/browser coverage claimed |
 | Remote Terminal → Quick connect | Observed SSH/22 defaults, optional title, one-time credentials, cancel; no connection attempted | Mock connect/error/retry/reconnect, SSH/Telnet/console differences |
 | Remote Terminal → New/Edit host | Observed original New dialog; batch groups destination/credentials/organization and keeps footer available | Isolated New/Edit, validation inside disclosures, keyboard/footer at narrow/short viewports and all palettes |
 | Loop Inspector host selection | Inferred page-one-only truncation; batch uses complete permission-filtered library | Tested >100 mixed hosts, foreign private exclusion and visible shared inclusion (`test_ssh_selector_covers_complete_visible_library`); no device calls |
