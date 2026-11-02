@@ -56,7 +56,8 @@ current saved-host credential resolution and existing permission gate.
 - Existing remote session, connection, library workflow, connection management and
   MSO policy modules: **95 passed, 12 subtests passed**. Combined final focused run:
   **101 passed, 12 subtests passed** (36.29 seconds, including active-history
-  retention follow-up).
+  retention follow-up). The broader affected run including shared UI component
+  tests passed **164 tests and 49 subtests** on `2ac8c6f` (37.65 seconds).
 - Both changed JavaScript files compiled successfully in V8 (syntax only).
 
 **Observed by parent in isolated browser fixture:** historical SSH destination
