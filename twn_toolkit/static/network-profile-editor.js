@@ -352,7 +352,12 @@
         });
         window.TwnUnsavedForms?.acknowledge(form, snapshot, savedValues);
         known(kind, profile, previous);
-        const summary = form.closest('details')?.querySelector(':scope > summary');
+        const card = form.closest('details');
+        if (card) {
+          card.classList.remove('profile-create-details', 'card-action-details', 'saved-profile-create');
+          card.classList.add('access-profile-card', 'nested-profile-card', 'saved-profile-record');
+        }
+        const summary = card?.querySelector(':scope > summary');
         if (summary)summary.textContent = `Editing ${profile.name}`;
         form.querySelectorAll('.secret-note,.snmp-community-note').forEach(note => {
           note.textContent = 'Saved secrets are write-only. Leave blank to keep the saved value.';

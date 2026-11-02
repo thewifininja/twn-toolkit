@@ -22571,3 +22571,10 @@ dialog.automation-prerequisite-dialog[open] { display: flex; flex-direction: col
 
 /* DNS failure text stays readable without widening the results table. */
 .dns-answer-error { overflow-wrap: anywhere; }
+
+/* Saved dependency names and receipts remain inside their network editor cards. */
+[data-network-profiles] details > summary,
+[data-network-profiles] [data-profile-form-status],
+[data-network-profiles] .snmp-form-status {
+  overflow-wrap: anywhere;
+}
