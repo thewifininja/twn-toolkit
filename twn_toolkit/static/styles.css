@@ -22496,8 +22496,10 @@ body.remote-terminal-resizing * {
 .multi-ssh-intro { align-items: center; display: flex; justify-content: space-between; gap: 12px; }
 .multi-ssh-intro p { margin: 0; }
 .multi-ssh-matrix-facts { min-height: 0; }
-.remote-host-dialog .remote-terminal-dialog-form { padding-bottom: 0; }
-.remote-host-dialog .remote-terminal-dialog-footer-split {
+.remote-host-dialog .remote-terminal-dialog-form,
+.remote-quick-connect-dialog .remote-terminal-dialog-form { padding-bottom: 0; }
+.remote-host-dialog .remote-terminal-dialog-footer-split,
+.remote-quick-connect-dialog .remote-terminal-dialog-form > footer {
   position: sticky;
   bottom: 0;
   z-index: 3;
@@ -22542,3 +22544,15 @@ details.multi-ssh-exact-plan.multi-ssh-workspace-card[open] > :not(summary) {
     justify-content: flex-start;
   }
 }
+
+/* Keep admission actions visible while a connection review or error grows. */
+.remote-quick-connect-dialog .remote-terminal-dialog-form > footer { flex-wrap: wrap; }
+.remote-quick-connect-dialog footer .tool-status {
+  flex: 1 1 100%;
+  margin: 0;
+  max-height: 7em;
+  min-width: 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.remote-quick-connect-dialog footer .tool-status:empty { display: none; }
