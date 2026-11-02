@@ -205,6 +205,9 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                         and matrix_action["name"] not in form["selected_actions"]
                     ):
                         form["selected_actions"].append(matrix_action["name"])
+                    if action != 'save_matrix_action_copy':
+                        _update_run_step_reference(form, previous_name, matrix_action['name'],
+                            add=action == 'save_matrix_action_and_add')
                     _load_host_matrix_form(form, host_matrix)
                     form["matrix_action_name"] = matrix_action["name"]
                     form["matrix_action_original_name"] = matrix_action["name"]
@@ -285,7 +288,8 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
                         if request.accept_mimetypes.best == 'application/json':
                             return jsonify(token=preview_token, html=render_template(
                                 'tools/_multi_ssh_review.html', preview=preview,
-                                form=form, selected_run_actions=preview['selected_actions']))
+                                form=form, selected_run_actions=preview['selected_actions']),
+                                connection_html=render_template('tools/_multi_ssh_connection_choices.html', preview=preview, form=form))
                     elif action == "run":
                         _validate_preview_token(
                             request.form.get("preview_token", ""),
@@ -341,7 +345,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
         if request.form.get("action") == "save_host_matrix_continue" and success and not error:
             active_workspace = "actions"
         if request.form.get("action") == "save_matrix_action_and_add" and success and not error:
-            active_workspace = "run"
+            active_workspace = "actions"
         return render_template(
             "tools/multi_ssh.html",
             error=error,
@@ -356,6 +360,7 @@ def register_ssh_routes(tools_bp: Blueprint) -> None:
             selected_matrix=selected_matrix,
             matrix_actions=matrix_actions,
             selected_run_actions=selected_run_actions,
+            run_steps_payload=_run_steps_payload(selected_run_actions),
             selected_action=selected_action,
             action_editor=action_editor,
             action_sources=_ssh_action_sources(selected_matrix),
@@ -569,6 +574,9 @@ def _default_form() -> dict[str, object]:
         "source_host_matrix": "",
         "matrix_actions": [],
         "selected_actions": [],
+        "run_steps": "",
+        "inline_draft_commands": "",
+        "inline_draft_timeout": "300",
         "matrix_action_run": False,
         "matrix_action_name": "",
         "matrix_action_description": "",
@@ -612,6 +620,9 @@ def _posted_form() -> dict[str, object]:
             for name in request.form.getlist("selected_actions")
             if str(name).strip()
         ],
+        "run_steps": request.form.get("run_steps", ""),
+        "inline_draft_commands": request.form.get("inline_draft_commands", ""),
+        "inline_draft_timeout": request.form.get("inline_draft_timeout", "300"),
         "matrix_action_run": request.form.get("matrix_action_run") == "on",
         "matrix_action_name": request.form.get("matrix_action_name", "").strip(),
         "matrix_action_description": request.form.get(
@@ -662,6 +673,8 @@ def _load_host_matrix_form(
             "host_matrix_original_name": "" if duplicate else matrix["name"],
             "source_host_matrix": str(matrix["name"]) if duplicate else "",
             "matrix_actions": list(matrix.get("actions", [])),
+            "run_steps": (str(form.get('run_steps', ''))
+                if not duplicate and form.get('host_matrix_original_name') == matrix['name'] else ''),
             # Preserve only explicit selections belonging to this same matrix.
             "selected_actions": (
                 list(form.get("selected_actions", []))
@@ -688,22 +701,9 @@ def _build_ssh_preview(form: dict[str, object]) -> dict[str, object]:
     matrix = _ssh_host_matrix_store().get(matrix_name) if matrix_name else None
     if not matrix:
         raise ToolInputError("Save or load a host matrix before running CLI actions.")
-    requested = list(dict.fromkeys(str(name) for name in form["selected_actions"]))
-    if not requested:
-        raise ToolInputError("Select at least one CLI action.")
-    actions_by_name = {
-        str(action["name"]): action for action in matrix.get("actions", [])
-    }
-    actions = [actions_by_name[name] for name in requested if name in actions_by_name]
-    missing = [
-        name
-        for name in requested
-        if not any(str(action["name"]) == name for action in actions)
-    ]
-    if missing:
-        raise ToolInputError(
-            "One or more selected CLI actions no longer exist. Review the run queue."
-        )
+    actions = _resolve_run_steps(list(matrix.get('actions', [])), form, strict=True)
+    if not actions:
+        raise ToolInputError('Add at least one command set in Commands before reviewing.')
     commands = ssh_matrix_actions_to_commands(actions)
     form["matrix"] = str(matrix["matrix"])
     form["commands"] = commands
@@ -1474,11 +1474,94 @@ def _selected_run_actions(
     form: dict[str, object],
 ) -> list[dict[str, object]]:
     """Return the temporary runbook in the operator-selected order."""
-    actions_by_name = {str(action["name"]): action for action in actions}
-    requested = list(
-        dict.fromkeys(str(name) for name in form.get("selected_actions", []))
-    )
-    return [actions_by_name[name] for name in requested if name in actions_by_name]
+    try:
+        return _resolve_run_steps(actions, form, strict=False)
+    except ToolInputError:
+        # Invalid posted state remains in the form for correction; admission
+        # always resolves with strict validation and cannot use this fallback.
+        return []
+
+
+def _run_step_entries(form: dict[str, object]) -> list[dict[str, object]]:
+    raw = str(form.get('run_steps', '')).strip()
+    if not raw:
+        return [{'source': 'saved', 'name': name} for name in dict.fromkeys(
+            str(name) for name in form.get('selected_actions', []))]
+    if len(raw.encode('utf-8')) > 1024 * 1024:
+        raise ToolInputError('Commands for this run exceed the input limit.')
+    try:
+        steps = json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        raise ToolInputError('The command order could not be read. Return to Commands and review this run.') from exc
+    if not isinstance(steps, list) or len(steps) > SSH_MATRIX_ACTION_LIMIT:
+        raise ToolInputError(f'A run may contain at most {SSH_MATRIX_ACTION_LIMIT} command sets.')
+    if any(not isinstance(step, dict) for step in steps):
+        raise ToolInputError('Each run step must identify saved or typed commands.')
+    return steps
+
+
+def _resolve_run_steps(actions, form, *, strict):
+    saved = {str(action['name']): action for action in actions}
+    resolved, seen = [], set()
+    for position, step in enumerate(_run_step_entries(form), 1):
+        source = step.get('source')
+        if source == 'saved':
+            name = str(step.get('name', ''))
+            key = ('saved', name)
+            if name not in saved:
+                if strict:
+                    raise ToolInputError('A selected saved command set no longer exists. Return to Commands and remove or replace it.')
+                if not str(form.get('run_steps', '')).strip():
+                    continue  # Preserve old selected_actions link filtering.
+                action = {'name': name, 'commands': '', 'variables': [], 'missing': True}
+            else:
+                # Saved command text always comes from the authorized current
+                # matrix, never a client-supplied copy of a library entry.
+                action = dict(saved[name])
+        elif source == 'inline':
+            identifier = step.get('id', '')
+            if not isinstance(identifier, str) or not isinstance(step.get('commands', ''), str) or not isinstance(step.get('name', ''), str):
+                raise ToolInputError('Typed command identifiers, names and commands must be text.')
+            if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', identifier):
+                raise ToolInputError('A typed command set has an invalid identifier.')
+            key = ('inline', identifier)
+            action = {'name': str(step.get('name') or f'Typed commands {position}'),
+                      'commands': str(step.get('commands', '')),
+                      'command_timeout': step.get('command_timeout', SSH_DEFAULT_COMMAND_TIMEOUT)}
+            if strict:
+                action = normalize_ssh_matrix_action(action)
+            else:
+                action['variables'] = []
+            action['step_id'] = identifier
+        else:
+            raise ToolInputError('Choose saved or typed commands for each run step.')
+        if key in seen:
+            raise ToolInputError('A command set appears more than once in this run.')
+        seen.add(key)
+        resolved.append({**action, 'source': source, 'order': position})
+    return resolved
+
+
+def _run_steps_payload(actions):
+    return [({'source': 'saved', 'name': action['name']} if action.get('source', 'saved') == 'saved'
+             else {'source': 'inline', 'id': action['step_id'], 'name': action['name'],
+                   'commands': action['commands'], 'command_timeout': action['command_timeout']})
+            for action in actions]
+
+
+def _update_run_step_reference(form, previous_name, current_name, *, add=False):
+    if not str(form.get('run_steps', '')).strip():
+        return
+    try:
+        steps = _run_step_entries(form)
+    except ToolInputError:
+        return
+    for step in steps:
+        if step.get('source') == 'saved' and step.get('name') == previous_name:
+            step['name'] = current_name
+    if add and not any(step.get('source') == 'saved' and step.get('name') == current_name for step in steps):
+        steps.append({'source': 'saved', 'name': current_name})
+    form['run_steps'] = json.dumps(steps, ensure_ascii=False)
 
 
 def _matrix_action_editor(

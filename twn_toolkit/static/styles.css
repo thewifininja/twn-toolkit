@@ -22513,3 +22513,9 @@ body.remote-terminal-resizing * {
 .investigation-team-panel[open] > summary,
 .investigation-merge-entry[open] > summary,
 .investigation-create-panel[open] > summary { margin-bottom: 16px; }
+
+/* Bulk SSH command composition remains separate from its final review. */
+.multi-ssh-inline-fields { grid-column: 1 / -1; min-width: 0; }
+.multi-ssh-inline-fields > .form { padding-top: 10px; }
+.multi-ssh-run-form > .multi-ssh-workspace-card { margin-bottom: 12px; }
+[data-ssh-library-editor] > summary { margin-bottom: 12px; }
