@@ -169,7 +169,7 @@ def register_api_request_routes(tools_bp: Blueprint) -> None:
                 recording_warning = "Activity or case recording could not be confirmed. This does not undo the HTTP operation."
             if request.accept_mimetypes.best == "application/json":
                 response = jsonify(admission_token=submitted_token, next_token=issue(),
-                    result=result, error=error, dispatched=dispatched, recording_warning=recording_warning,
+                    result=_transient_api_result(result), error=error, dispatched=dispatched, recording_warning=recording_warning,
                     receipt_url=url_for("tools.api_request", receipt=submitted_token) if dispatched else None)
                 response.status_code = 200 if dispatched else response_status
                 disable_client_caching(response)
@@ -226,3 +226,12 @@ def _journal_header_names(source: str) -> list[str]:
         return sorted(parse_http_headers(source))
     except ToolInputError:
         return []
+
+
+def _transient_api_result(result):
+    if result is None:
+        return None
+    # Request URL/header values already remain in the composer; never echo them.
+    return {key: result[key] for key in (
+        "status", "reason", "elapsed_ms", "bytes", "resolved_addresses",
+        "response_headers", "body", "truncated", "redirect") if key in result}

@@ -4,7 +4,7 @@ import pytest
 from twn_toolkit import create_app
 
 RESULT = {'status': 200, 'reason': 'PrivateRemoteReasonFixture', 'elapsed_ms': 1, 'bytes': 12,
-          'resolved_addresses': [], 'request_headers': {}, 'response_headers': {},
+          'resolved_addresses': [], 'request_headers': {'X-Private': 'PrivateRequestEchoFixture'}, 'url': 'https://fixture.test/PrivateQuery', 'response_headers': {},
           'body': 'PrivateResponseFixture', 'truncated': False, 'redirect': ''}
 
 @pytest.fixture
@@ -39,6 +39,8 @@ def test_repeated_admission_sends_once_and_never_saves_payload(isolated):
     assert second.status_code == 409 and second.json['dispatched'] is False
     assert sender.call_count == 1
     assert first.json['result']['body'] == RESULT['body']
+    assert 'request_headers' not in first.json['result'] and 'url' not in first.json['result']
+    assert 'PrivateRequestEchoFixture' not in first.get_data(as_text=True)
     receipt = client.get(first.json['receipt_url'])
     assert receipt.status_code == 200 and b'HTTP 200' in receipt.data
     assert b'PrivateResponseFixture' not in receipt.data
@@ -152,3 +154,31 @@ def test_invalid_metadata_cannot_persist_secret_markers(isolated, field):
     sender.assert_not_called()
     for database in path.glob('*.sqlite3'):
         assert marker.encode() not in database.read_bytes(), database.name
+
+
+@pytest.mark.parametrize('status', [400, 500])
+def test_received_http_error_is_confirmed_response_not_uncertain(isolated, status):
+    client, sender, _ = isolated
+    sender.return_value = dict(RESULT, status=status)
+    response = send(client, compose(client))
+    assert response.json['result']['status'] == status
+    page = client.get(response.json['receipt_url'])
+    assert f'HTTP {status}'.encode() in page.data
+    assert b'A response was confirmed' in page.data
+    assert sender.call_count == 1
+
+
+def test_revoked_tool_grant_hides_owned_receipt_and_blocks_replay(isolated):
+    client, sender, path = isolated
+    from twn_toolkit.auth import AuthStore
+    auth = AuthStore(str(path)); auth.create_user('fixture-admin', 'FixturePassword123!', is_admin=True)
+    grant = auth.save_access_profile(name='API grant', tool_ids=['tools.api_request'])
+    user = auth.create_user('fixture-revoked', 'FixturePassword123!', access_profile_ids=[grant['id']])
+    client.application.testing = False; login(client, user)
+    values = compose(client); first = send(client, values)
+    auth.update_user_access(user['id'], is_admin=False, access_profile_ids=[])
+    login(client, auth.get_user('fixture-revoked'))
+    assert client.get(first.json['receipt_url']).status_code == 403
+    assert client.get('/tools/api-request/admission').status_code == 403
+    assert send(client, values).status_code == 403
+    assert sender.call_count == 1

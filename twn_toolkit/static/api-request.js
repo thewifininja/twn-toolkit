@@ -27,20 +27,37 @@
     if (className) element.className = className;
     return element;
   };
+  const validResult = result => result && typeof result === 'object'
+    && Number.isInteger(result.status) && result.status >= 100 && result.status <= 599
+    && Number.isFinite(result.elapsed_ms) && result.elapsed_ms >= 0 && result.elapsed_ms <= 1e12
+    && Number.isInteger(result.bytes) && result.bytes >= 0 && result.bytes <= 1048576
+    && typeof result.truncated === 'boolean' && typeof result.body === 'string'
+    && typeof result.reason === 'string' && typeof result.redirect === 'string'
+    && Array.isArray(result.resolved_addresses) && result.resolved_addresses.every(value => typeof value === 'string')
+    && result.response_headers && typeof result.response_headers === 'object' && !Array.isArray(result.response_headers)
+    && Object.entries(result.response_headers).every(([name, value]) => typeof name === 'string' && typeof value === 'string');
   function showResult(result, identity, newerEdits) {
     const anchor = workspace.querySelector('[data-tool-results-anchor]');
     const panel = node('section', '', 'panel');
-    panel.append(node('h2', `${result.status} ${result.reason || ''}`));
+    const heading = node('div', '', 'certificate-result-head');
+    const detail = node('div');
+    detail.append(node('h2', `${result.status} ${result.reason}`));
+    heading.append(detail, node('span', `HTTP ${result.status}`, `pill ${result.status < 400 ? 'success' : 'error'}`));
+    panel.append(heading);
     panel.append(node('p', identity));
-    panel.append(node('p', `${result.elapsed_ms} ms · ${result.bytes} bytes`));
+    panel.append(node('p', `${result.elapsed_ms} ms · ${result.bytes} bytes · ${result.resolved_addresses.join(', ')}`));
     if (result.redirect) panel.append(node('p', `Redirect target: ${result.redirect} (not followed)`, 'message'));
     if (result.truncated) panel.append(node('p', 'Response body truncated at 1 MiB.', 'message error'));
     panel.append(node('h3', 'Response headers'));
-    const list = node('dl', '', 'result-output');
-    Object.entries(result.response_headers || {}).forEach(([name, value]) => {
-      list.append(node('dt', name), node('dd', value));
+    const wrap = node('div', '', 'preview-table-wrap');
+    const table = node('table'), rows = node('tbody');
+    Object.entries(result.response_headers).forEach(([name, value]) => {
+      const row = node('tr'), cell = node('td');
+      cell.append(node('code', value));
+      row.append(node('th', name), cell); rows.append(row);
     });
-    panel.append(list, node('h3', 'Response body'), node('pre', result.body, 'result-output'));
+    table.append(rows); wrap.append(table);
+    panel.append(wrap, node('h3', 'Response body'), node('pre', result.body, 'result-output'));
     anchor.replaceChildren(panel);
     const title = workspace.querySelector('[data-tool-runbar]');
     if (title) {
@@ -54,8 +71,10 @@
   refresh.addEventListener('click', async () => {
     if (pending) return;
     pending = true; refresh.disabled = true;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch(form.dataset.admissionUrl, {headers: {Accept: 'application/json'}, cache: 'no-store'});
+      const response = await fetch(form.dataset.admissionUrl, {headers: {Accept: 'application/json'}, cache: 'no-store', signal: controller.signal});
       if (!response.ok || !response.headers.get('content-type')?.includes('application/json')) throw Error();
       const payload = await response.json();
       if (typeof payload.token !== 'string' || !payload.token) throw Error();
@@ -65,7 +84,7 @@
       submit.disabled = false; refresh.hidden = true;
     } catch (_) {
       status.textContent = 'Could not prepare a new send. Check your session/access and try this read-only action again. Your draft is unchanged.';
-    } finally { pending = false; refresh.disabled = false; }
+    } finally { clearTimeout(timer); pending = false; refresh.disabled = false; }
   });
   if (!token.value) { submit.disabled = true; refresh.hidden = false; }
   form.addEventListener('submit', async event => {
@@ -74,24 +93,25 @@
     pending = true;
     const body = new FormData(form);
     const submittedToken = body.get('admission_token');
-    const submittedURL = new URL(body.get('url'), window.location.href);
-    const identity = `${body.get('method')} · ${submittedURL.origin}`;
     consent.checked = false;
     const snapshot = window.TwnUnsavedForms?.capture(form);
     submit.disabled = true; refresh.disabled = true;
     status.textContent = 'Sending once. Closing settings does not cancel a remote operation.';
-    const receiptURL = new URL(form.action, window.location.href);
-    receiptURL.search = '';
-    receiptURL.searchParams.set('receipt', submittedToken);
-    window.history.replaceState(null, '', receiptURL.href);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 40000);
     let response;
     try {
+      const submittedURL = new URL(body.get('url'), window.location.href);
+      const identity = `${body.get('method')} · ${submittedURL.origin}`;
+      const receiptURL = new URL(form.action, window.location.href);
+      receiptURL.search = '';
+      receiptURL.searchParams.set('receipt', submittedToken);
+      window.history.replaceState(null, '', receiptURL.href);
       response = await fetch(form.action, {method: 'POST', body, headers: {Accept: 'application/json'}, signal: controller.signal});
       if (response.redirected || !response.headers.get('content-type')?.includes('application/json')) throw Error();
       const payload = await response.json();
       if (payload.admission_token !== submittedToken || typeof payload.next_token !== 'string' || typeof payload.dispatched !== 'boolean') throw Error();
+      if (payload.result !== null && (!payload.dispatched || !validResult(payload.result))) throw Error();
       if (payload.receipt_url) {
         const receipt = new URL(payload.receipt_url, window.location.href);
         const current = new URL(form.action, window.location.href);
@@ -101,7 +121,7 @@
       const newerEdits = composition(new FormData(form)) !== composition(body);
       token.value = payload.next_token;
       consent.checked = false;
-      if (payload.result && payload.dispatched && Number.isInteger(payload.result.status) && typeof payload.result.body === 'string') {
+      if (payload.result) {
         window.TwnUnsavedForms?.acknowledge(form, snapshot);
         // Sending is not saving: this transient composer still needs a leave warning.
         form.dataset.unsavedInitial = 'true';
