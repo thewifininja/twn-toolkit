@@ -18,6 +18,7 @@
   const quickForm = document.getElementById("remote-terminal-form");
   let quickDraftTouched = false;
   let pendingConnectionAgain = null;
+  let quickRecoveryContext = false;
   const reconnectNote = quickForm.querySelector('[data-quick-reconnect-note]');
   const replaceDraftButton = quickForm.querySelector('[data-quick-replace-draft]');
   const quickOpenStates = new Map();
@@ -36,6 +37,7 @@
   quickForm.addEventListener('change', () => { quickDraftTouched = true; });
   document.addEventListener('twn:quick-connect-completed', () => {
     quickDraftTouched = false;
+    quickRecoveryContext = false;
     pendingConnectionAgain = null;
     reconnectNote.hidden = true;
     replaceDraftButton.hidden = true;
@@ -50,6 +52,7 @@
     }
     if (quickDraftTouched) {
       pendingConnectionAgain = session;
+      reconnectNote.className = 'message warning';
       reconnectNote.textContent = 'Your existing connection draft is still here. Keep editing it, or explicitly replace it with the previous session’s destination.';
       reconnectNote.hidden = false;
       replaceDraftButton.hidden = false;
@@ -88,10 +91,17 @@
     quickDraftTouched = true;
     pendingConnectionAgain = null;
     replaceDraftButton.hidden = true;
-    reconnectNote.textContent = 'Review a NEW connection using the previous destination. The old session and its output stay available. Saved-host settings and credentials are not reloaded; use Connections for the latest saved settings. SSH exceptions start off; review Connection options before connecting.';
-    reconnectNote.hidden = false;
+    quickRecoveryContext = true;
+    updateReconnectNotice();
     setStatus('remote-terminal-start-status', session.protocol === 'ssh' ? 'Enter credentials and review the destination before clicking Connect.' : 'Review the destination before clicking Connect.');
     openDialog(quickDialog, session.protocol === 'console' ? 'remote-terminal-console-device' : 'remote-terminal-host');
+  }
+  function updateReconnectNotice() {
+    if (!quickRecoveryContext || pendingConnectionAgain) return;
+    reconnectNote.className = 'field-note';
+    reconnectNote.textContent = 'Start a new connection to the previous destination. Previous output stays available. Saved-host updates and credentials are not loaded; use Connections for current saved settings.'
+      + (quickProtocol.value === 'ssh' ? ' SSH exceptions start off; review Connection options before connecting.' : '');
+    reconnectNote.hidden = false;
   }
   const folderForm = document.getElementById("remote-folder-form");
   const hostForm = document.getElementById("remote-host-form");
@@ -1812,6 +1822,7 @@
         option.hidden = protocol !== "telnet";
       });
       syncQuickCredentialMode();
+      updateReconnectNotice();
     } else {
       hostForm.querySelectorAll("[data-host-network]").forEach((field) => field.hidden = protocol === "console");
       hostForm.querySelector("[data-host-console]").hidden = protocol !== "console";
