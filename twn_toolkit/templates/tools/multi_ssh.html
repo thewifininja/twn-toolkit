@@ -25,7 +25,7 @@
     <section class="multi-ssh-matrix-context" aria-label="Host matrix workspace">
       <form class="multi-ssh-matrix-picker" method="get">
         <label>
-          Host matrix
+          Host group
           <select name="host_matrix" data-ssh-matrix-selector>
               <option value="">New unsaved matrix</option>
             {% for matrix in host_matrices %}
@@ -57,7 +57,7 @@
 
     <div class="multi-ssh-workspace-tabs" role="tablist" aria-label="Bulk SSH workspace" data-ssh-workspace-tabs>
       <button type="button" role="tab" id="multi-ssh-hosts-tab" aria-controls="multi-ssh-hosts-panel" aria-selected="{{ 'true' if active_workspace == 'hosts' else 'false' }}" data-ssh-workspace-tab="hosts">1 · Hosts</button>
-      <button type="button" role="tab" id="multi-ssh-actions-tab" aria-controls="multi-ssh-actions-panel" aria-selected="{{ 'true' if active_workspace == 'actions' else 'false' }}" data-ssh-workspace-tab="actions">2 · CLI actions</button>
+      <button type="button" role="tab" id="multi-ssh-actions-tab" aria-controls="multi-ssh-actions-panel" aria-selected="{{ 'true' if active_workspace == 'actions' else 'false' }}" data-ssh-workspace-tab="actions">2 · Commands</button>
       <button type="button" role="tab" id="multi-ssh-run-tab" aria-controls="multi-ssh-run-panel" aria-selected="{{ 'true' if active_workspace == 'run' else 'false' }}" data-ssh-workspace-tab="run">3 · Review &amp; run</button>
     </div>
 
@@ -70,14 +70,14 @@
           <section class="multi-ssh-workspace-card" data-ssh-matrix-editor data-ssh-target-limit="{{ ssh_target_limit }}">
             <div class="multi-ssh-section-head">
               <div>
-                <h2>{{ form.host_matrix_original_name or 'Build a host matrix' }}</h2>
-                <p>Names and hosts stay fixed. Custom columns become variables available to every CLI action in this matrix.</p>
+                <h2>{{ form.host_matrix_original_name or 'Choose hosts' }}</h2>
+                <p>Enter hosts below. Optional columns supply per-host values for your commands.</p>
               </div>
               <button class="secondary multi-ssh-matrix-mode" type="button" data-ssh-matrix-toggle data-ssh-matrix-mode="raw" aria-label="Switch to Raw matrix">Raw matrix</button>
             </div>
 
             <div class="multi-ssh-profile-fields">
-              <label>Matrix name<input name="host_matrix_name" maxlength="100" value="{{ form.host_matrix_name }}" placeholder="Branch FortiGates" data-1p-ignore required></label>
+              <label>Host group name<input name="host_matrix_name" maxlength="100" value="{{ form.host_matrix_name }}" placeholder="Branch FortiGates" data-1p-ignore required></label>
               <label>Description<input name="host_matrix_description" maxlength="500" value="{{ form.host_matrix_description }}" placeholder="Devices and per-host variables included in this workspace" data-1p-ignore></label>
             </div>
 
@@ -133,26 +133,29 @@
 
       <section id="multi-ssh-actions-panel" role="tabpanel" aria-labelledby="multi-ssh-actions-tab" data-ssh-workspace-panel="actions" {% if active_workspace != 'actions' %}hidden{% endif %}>
         {% if selected_matrix %}
+          {% include "tools/_multi_ssh_composer.html" %}
+          <details class="multi-ssh-exact-plan multi-ssh-workspace-card" data-ssh-library-editor {% if request.form.get('action') in ['save_matrix_action','save_matrix_action_copy','copy_matrix_action','delete_matrix_action'] or request.args.get('new_action') %}open{% endif %}>
+            <summary>Saved command library · {{ matrix_actions|length }} {{ 'set' if matrix_actions|length == 1 else 'sets' }}</summary>
           <section class="multi-ssh-action-library">
             <div class="multi-ssh-section-head compact">
-              <div><p class="eyebrow">Action library</p><h2>{{ matrix_actions|length }} saved {{ 'action' if matrix_actions|length == 1 else 'actions' }}</h2><p>Choose an action to edit, or create a reusable command template for this host matrix.</p></div>
+              <div><h2>{{ matrix_actions|length }} saved command {{ 'set' if matrix_actions|length == 1 else 'sets' }}</h2><p>Edit reusable commands here. This does not add them to the current run.</p></div>
             </div>
             <div class="multi-ssh-action-toolbar">
               <form method="get" class="multi-ssh-action-picker" data-ssh-action-picker>
                 <input type="hidden" name="host_matrix" value="{{ selected_matrix.name }}">
                 <input type="hidden" name="workspace" value="actions">
                 <label>
-                  Saved CLI action
+                  Saved command set
                   <select name="matrix_action" data-ssh-action-selector {% if not matrix_actions %}disabled{% endif %}>
-                    {% if not matrix_actions %}<option>No saved CLI actions</option>{% endif %}
-                    <option value="" {% if not action_editor.original_name %}selected{% endif %}>New CLI action · not saved</option>
+                    {% if not matrix_actions %}<option>No saved command sets</option>{% endif %}
+                    <option value="" {% if not action_editor.original_name %}selected{% endif %}>New saved command set · not saved</option>
                     {% for matrix_action in matrix_actions %}
                       <option value="{{ matrix_action.name }}" {% if selected_action and action_editor.original_name and selected_action.name == matrix_action.name %}selected{% endif %}>{{ matrix_action.name }}{% if matrix_action.platform %} · {{ matrix_action.platform }}{% endif %}</option>
                     {% endfor %}
                   </select>
                 </label>
               </form>
-              <button class="secondary multi-ssh-new-action" type="button" data-ssh-new-action><span aria-hidden="true">+</span> New CLI action</button>
+              <button class="secondary multi-ssh-new-action" type="button" data-ssh-new-action><span aria-hidden="true">+</span> New saved command set</button>
             </div>
 
             {% if action_sources %}
@@ -177,7 +180,7 @@
                 </form>
               </details>
             {% endif %}
-            <p class="multi-ssh-library-note">Save to keep an action in the library, or Save &amp; add to run to assemble your next run. Review commands on the Run tab before executing.</p>
+            <p class="multi-ssh-library-note">Use the command picker above to add saved commands to this run. Library edits are saved separately.</p>
           </section>
 
           <form class="form multi-ssh-action-editor" method="post" autocomplete="off" data-unsaved-form>
@@ -186,11 +189,11 @@
 <input type="hidden" name="mso_kind" value="ssh.matrix"><input type="hidden" name="mso_id" value="{{ matrix_mso.get('id', '') }}"><input type="hidden" name="mso_version" value="{{ matrix_mso.get('version', '') }}">{% endif %}
             <input type="hidden" name="matrix_action_original_name" value="{{ action_editor.original_name }}">
             <div class="multi-ssh-section-head">
-              <div><p class="eyebrow">{{ 'Edit CLI action' if action_editor.original_name else 'Create CLI action' }}</p><h2>{{ action_editor.name or 'New reusable action' }}</h2><p>Variables are resolved from each host row. Every required value must exist before this action can be saved.</p></div>
-              {% if action_editor.original_name %}<span class="pill success">{{ selected_matrix.target_count }}/{{ selected_matrix.target_count }} ready</span>{% endif %}
+              <div><p class="eyebrow">{{ 'Edit saved commands' if action_editor.original_name else 'Create saved commands' }}</p><h2>{{ action_editor.name or 'New saved command set' }}</h2><p>Per-host values are checked before these commands can be saved.</p></div>
+              {% if action_editor.original_name %}<span class="pill success">Values available for {{ selected_matrix.target_count }} hosts</span>{% endif %}
             </div>
             <div class="multi-ssh-profile-fields">
-              <label><span>Action name</span><input name="matrix_action_name" maxlength="100" value="{{ action_editor.name }}" placeholder="Collect interface status" data-1p-ignore required></label>
+              <label><span>Command set name</span><input name="matrix_action_name" maxlength="100" value="{{ action_editor.name }}" placeholder="Collect interface status" data-1p-ignore required></label>
               <label><span>Device family <span class="label-optional">optional</span></span><input name="matrix_action_platform" maxlength="80" value="{{ action_editor.platform }}" placeholder="FortiGate, Cisco IOS, Linux…" data-1p-ignore></label>
             </div>
             <label>Description <span class="label-optional">optional</span><input name="matrix_action_description" maxlength="500" value="{{ action_editor.description }}" placeholder="When should an operator use this action?" data-1p-ignore></label>
@@ -202,21 +205,22 @@
             <div class="multi-ssh-save-row">
               <p class="field-note">Need more time for one command? Prefix it with <code>[timeout=600]</code>. There is no command-count limit. The configured run deadline still applies. Paste multiline double-quoted values as written; the closing quote completes that command.</p>
               <div class="button-row">
-                <button name="action" value="save_matrix_action" type="submit">{{ 'Save changes' if action_editor.original_name else 'Save CLI action' }}</button>
-                <button class="secondary" name="action" value="save_matrix_action_and_add" type="submit">Save &amp; add to run</button>
+                <button name="action" value="save_matrix_action" type="submit">{{ 'Save library changes' if action_editor.original_name else 'Save to library' }}</button>
+                <button class="secondary" name="action" value="save_matrix_action_and_add" type="submit">Save &amp; add to this run</button>
                 <button class="secondary" name="action" value="save_matrix_action_copy" type="button" data-ssh-copy="action">Save a copy</button>
+                <button class="secondary" type="button" data-ssh-discard-library>Discard library edits</button>
                 <button class="danger" name="action" value="delete_matrix_action" type="submit" formnovalidate data-ssh-action-delete {% if not action_editor.original_name %}hidden{% endif %}>Delete</button>
               </div>
             </div>
           </form>
+          </details>
         {% else %}
-          <div class="multi-ssh-empty-state"><h2>Save the host matrix first</h2><p>CLI actions belong to a saved matrix so required variables cannot become detached from their hosts.</p><button type="button" class="secondary" data-ssh-open-workspace="hosts">Go to Hosts</button></div>
+          <div class="multi-ssh-empty-state"><h2>Choose and save hosts first</h2><p>Save the host group in step 1, then add commands for this run.</p><button type="button" class="secondary" data-ssh-open-workspace="hosts">Go to Hosts</button></div>
         {% endif %}
       </section>
 
       <section id="multi-ssh-run-panel" role="tabpanel" aria-labelledby="multi-ssh-run-tab" data-ssh-workspace-panel="run" {% if active_workspace != 'run' %}hidden{% endif %}>
-        {% if ssh_job_api %}<p class="field-note">Background runs have a {{ ssh_job_timeout }}-second total deadline, adjustable in Operations settings. Hosts that do not start before cancellation or the deadline are not replayed.</p>{% endif %}
-        {% if selected_matrix and matrix_actions %}
+        {% if selected_matrix %}
           <form class="form multi-ssh-run-form" id="multi-ssh-run-form" method="post" autocomplete="off" data-multi-ssh data-unsaved-form {% if ssh_job_api %}data-ssh-job-api{% endif %} data-ssh-host-count="{{ selected_matrix.target_count }}">
             <input type="hidden" name="workspace" value="run">
             <input type="hidden" name="matrix_action_run" value="on">
@@ -229,55 +233,31 @@
 
             <input type="hidden" name="connection_choices_draft" value="" data-ssh-choices-state>
             <input type="hidden" name="runbook_draft" value="" data-ssh-runbook-state>
-            <div class="multi-ssh-run-grid">
-              <section class="multi-ssh-workspace-card">
-                <div class="multi-ssh-section-head compact"><div><p class="eyebrow">Actions in this run</p><h2>Build this run</h2><p>Add one or more saved actions, then arrange the exact order they should execute.</p></div><span class="pill" data-ssh-runbook-count>{{ selected_run_actions|length }} actions</span></div>
-                <div class="multi-ssh-runbook-add">
-                  <label>
-                    CLI action
-                    <select data-ssh-runbook-picker>
-                      <option value="">Choose an action</option>
-                      {% for matrix_action in matrix_actions %}
-                        <option value="{{ matrix_action.name }}" data-variables="{{ matrix_action.variables|join(' · ') if matrix_action.variables else 'No custom variables' }}" data-platform="{{ matrix_action.platform }}">{{ matrix_action.name }}{% if matrix_action.platform %} · {{ matrix_action.platform }}{% endif %}</option>
-                      {% endfor %}
-                    </select>
-                  </label>
-                  <button class="secondary" type="button" data-ssh-runbook-add disabled>Add to run</button>
-                </div>
-                <div class="multi-ssh-runbook" data-ssh-runbook aria-live="polite">
-                  {% for matrix_action in selected_run_actions %}
-                    <article class="multi-ssh-runbook-row" data-ssh-runbook-action="{{ matrix_action.name }}">
-                      <input type="hidden" name="selected_actions" value="{{ matrix_action.name }}" data-unsaved-ignore>
-                      <span class="multi-ssh-action-number" data-ssh-runbook-number>{{ loop.index }}</span>
-                      <span><strong>{{ matrix_action.name }}</strong><small>{% if matrix_action.variables %}Uses {{ matrix_action.variables|join(' · ') }}{% else %}No custom variables{% endif %}</small></span>
-                      <span class="pill {{ 'success' if matrix_action.compatibility and matrix_action.compatibility.compatible else 'warning' }}">{{ 'ready' if matrix_action.compatibility and matrix_action.compatibility.compatible else 'review' }}</span>
-                      <span class="button-row compact-actions">
-                        <button class="secondary compact" type="button" data-ssh-runbook-move="up" aria-label="Move {{ matrix_action.name }} up">↑</button>
-                        <button class="secondary compact" type="button" data-ssh-runbook-move="down" aria-label="Move {{ matrix_action.name }} down">↓</button>
-                        <button class="danger compact" type="button" data-ssh-runbook-remove aria-label="Remove {{ matrix_action.name }} from runbook">Remove</button>
-                      </span>
-                    </article>
-                  {% endfor %}
-                  <div class="multi-ssh-runbook-empty" data-ssh-runbook-empty {% if selected_run_actions %}hidden{% endif %}><strong>No actions in this run</strong><p>Choose an action above, or use Save &amp; add to run in the CLI action editor. Review and confirm before anything executes.</p></div>
-                </div>
-                <div class="message info compact-message"><strong>Execution model:</strong> hosts run concurrently; runbook actions execute sequentially on each host.</div>
-              </section>
-
-              <section class="multi-ssh-workspace-card multi-ssh-preflight-card">
-                <div data-ssh-review-content>{% include "tools/_multi_ssh_review.html" %}</div>
-                <div class="button-row"><button class="secondary" name="action" type="submit" value="preview" formnovalidate data-ssh-preview-button>Refresh review</button><span class="field-note" data-ssh-preview-status role="status" {% if not preview_token %}hidden{% endif %}>Review is current.</span></div>
-              </section>
-            </div>
-
-              <section class="multi-ssh-workspace-card multi-ssh-run-confirmation" data-ssh-run-confirmation>
-                <div class="multi-ssh-section-head"><div><p class="eyebrow">Connect and run</p><h2>Credentials and safeguards</h2><p>Review the commands and connection choices above, then click Run to execute. Credentials are used only for this run.</p></div></div>
-                <label>Run name (optional)<input name="run_name" maxlength="100" value="{{ form.run_name }}" placeholder="{{ form.host_matrix_name or 'Branch switch checks' }}"><span class="field-note">Use a name you will recognize in recent runs. A timestamp is shown automatically.</span></label>
-                <div class="form-grid"><label>Username<input name="username" value="{{ form.username }}" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><label>SSH port<input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required></label></div>
+            <textarea name="run_steps" hidden data-ssh-run-steps>{{ form.run_steps or run_steps_payload|tojson }}</textarea>
+            <section class="multi-ssh-workspace-card multi-ssh-preflight-card">
+              <div class="multi-ssh-section-head"><div><h2>Commands to run</h2><p>Review the order and prepared commands. No hosts have been contacted.</p></div><button class="secondary" type="button" data-ssh-open-workspace="actions" form="multi-ssh-run-form">Edit commands</button></div>
+              <div data-ssh-review-content>{% include "tools/_multi_ssh_review.html" %}</div>
+              <div class="button-row"><button class="secondary" name="action" type="submit" value="preview" formnovalidate data-ssh-preview-button>Refresh command review</button><span class="field-note" data-ssh-preview-status role="status" {% if not preview_token %}hidden{% endif %}>Command review is current.</span></div>
+            </section>
+            <section class="multi-ssh-workspace-card multi-ssh-run-confirmation" data-ssh-run-confirmation>
+              <div class="multi-ssh-section-head"><div><h2>Connection details</h2><p>Use these credentials and SSH settings for this run only.</p></div></div>
+              <div class="form-grid"><label>Username<input name="username" value="{{ form.username }}" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><label>SSH port<input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required></label></div>
+              <div data-ssh-connection-content>{% include "tools/_multi_ssh_connection_choices.html" %}</div>
+            </section>
+            <details class="multi-ssh-exact-plan multi-ssh-workspace-card">
+              <summary>Optional run settings</summary>
+              <div class="form">
+                <label>Run name<input name="run_name" maxlength="100" value="{{ form.run_name }}" placeholder="{{ form.host_matrix_name or 'Bulk SSH' }}"><span class="field-note">Optional label for finding this run later.</span></label>
                 <label class="check"><input name="send_ctrl_y" type="checkbox" {% if form.send_ctrl_y %}checked{% endif %}>Send Ctrl+Y before commands</label>
-                <input name="confirm_execution" type="hidden" value="on"><p class="field-note">Clicking Run confirms that you reviewed this plan and intend to execute it on the listed hosts.</p>
-                <div class="button-row"><button name="action" type="submit" value="run" data-ssh-run-button {% if not preview_token %}disabled{% endif %}>Run reviewed actions</button></div>
-              </section>
-
+                {% if ssh_job_api %}<p class="field-note">Total run deadline: {{ ssh_job_timeout }} seconds. Hosts not started before cancellation or this deadline are not replayed.</p>{% endif %}
+              </div>
+            </details>
+            <section class="multi-ssh-workspace-card">
+              <p data-ssh-final-summary role="status">Choose commands in step 2 before running.</p>
+              <p class="field-note">Command sets run in order on each host; hosts run concurrently. Clicking Run confirms execution on the listed hosts.</p>
+              <input name="confirm_execution" type="hidden" value="on">
+              <div class="button-row"><button class="secondary" type="button" data-ssh-open-workspace="actions" form="multi-ssh-run-form">Back to commands</button><button name="action" type="submit" value="run" data-ssh-run-button {% if not preview_token %}disabled{% endif %}>Run on {{ selected_matrix.target_count }} {{ 'host' if selected_matrix.target_count == 1 else 'hosts' }}</button></div>
+            </section>
           </form>
         {% elif preview %}
           <form class="form multi-ssh-run-form" id="multi-ssh-run-form" method="post" autocomplete="off" data-multi-ssh data-unsaved-form {% if ssh_job_api %}data-ssh-job-api{% endif %} data-ssh-host-count="{{ preview.plans|length }}">
@@ -305,7 +285,7 @@
             </section>
             {% if preview_token %}
               <section class="multi-ssh-workspace-card multi-ssh-run-confirmation" data-ssh-run-confirmation>
-                <div class="multi-ssh-section-head"><div><p class="eyebrow">Connect and run</p><h2>Credentials and safeguards</h2><p>The preview is signed. Credentials are used for this run. Mainframe requests use temporary encrypted storage.</p></div><span class="pill success">{{ preview.command_count }} commands · {{ preview.plans|length }} hosts</span></div>
+                <div class="multi-ssh-section-head"><div><p class="eyebrow">Connect and run</p><h2>Connect and run</h2><p>The preview is signed. Credentials are used for this run. Mainframe requests use temporary encrypted storage.</p></div><span class="pill success">{{ preview.command_count }} commands · {{ preview.plans|length }} hosts</span></div>
                 <label>Run name (optional)<input name="run_name" maxlength="100" value="{{ form.run_name }}" placeholder="{{ form.host_matrix_name or 'Branch switch checks' }}"><span class="field-note">Use a name you will recognize in recent runs. A timestamp is shown automatically.</span></label>
                 <div class="form-grid"><label>Username<input name="username" value="{{ form.username }}" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><label>SSH port<input name="port" type="number" min="1" max="65535" value="{{ form.port }}" data-1p-ignore required></label></div>
                 {% include "tools/_multi_ssh_run_options.html" %}
@@ -317,7 +297,7 @@
         {% elif selected_matrix %}
           <div class="multi-ssh-empty-state"><h2>Create a CLI action first</h2><p>The runbook builder appears after this matrix has at least one compatible action in its library.</p><button type="button" class="secondary" data-ssh-open-workspace="actions">Go to CLI actions</button></div>
         {% else %}
-          <div class="multi-ssh-empty-state"><h2>Save the host matrix first</h2><p>A saved matrix anchors the hosts, variables, action order, and signed run plan.</p><button type="button" class="secondary" data-ssh-open-workspace="hosts">Go to Hosts</button></div>
+          <div class="multi-ssh-empty-state"><h2>Choose and save hosts first</h2><p>Choose and save your hosts in step 1 before preparing a run.</p><button type="button" class="secondary" data-ssh-open-workspace="hosts">Go to Hosts</button></div>
         {% endif %}
       </section>
     </div>

@@ -1,0 +1,36 @@
+<div class="multi-ssh-run-grid" data-ssh-composer>
+  <section class="multi-ssh-workspace-card">
+    <div class="multi-ssh-section-head"><div><h2>Commands for this run</h2><p>Add saved commands or type commands, then put them in execution order.</p></div><span class="pill" data-ssh-runbook-count>{{ selected_run_actions|length }} sets</span></div>
+    <div class="multi-ssh-runbook-add">
+      <label>Saved command set<select data-ssh-runbook-picker form="multi-ssh-run-form" data-unsaved-ignore><option value="">Choose saved commands to add</option>{% for command_set in matrix_actions %}<option value="{{ command_set.name }}" data-variables="{{ command_set.variables|join(' · ') if command_set.variables else 'No custom variables' }}">{{ command_set.name }}</option>{% endfor %}</select></label>
+      <button class="secondary" type="button" form="multi-ssh-run-form" data-ssh-runbook-add disabled>Add to this run</button>
+    </div>
+    <div class="multi-ssh-runbook" data-ssh-runbook aria-live="polite">
+      {% for command_set in selected_run_actions %}
+      <article class="multi-ssh-runbook-row" data-ssh-runbook-action="{{ command_set.name }}" data-step-source="{{ command_set.source or 'saved' }}" data-step-id="{{ command_set.step_id or '' }}">
+        {% if command_set.source != 'inline' %}<input type="hidden" name="selected_actions" value="{{ command_set.name }}" data-unsaved-ignore form="multi-ssh-run-form">{% endif %}
+        <span class="multi-ssh-action-number" data-ssh-runbook-number>{{ loop.index }}</span>
+        <span><strong>{{ command_set.name }}</strong><small>{{ 'Typed · this run only' if command_set.source == 'inline' else 'Saved command set' }}</small></span>
+        <span class="pill">{{ 'Unavailable' if command_set.missing else 'Selected' }}</span>
+        <span class="button-row compact-actions">
+          <button class="secondary compact" type="button" form="multi-ssh-run-form" data-ssh-runbook-move="up" aria-label="Move {{ command_set.name }} up">↑</button>
+          <button class="secondary compact" type="button" form="multi-ssh-run-form" data-ssh-runbook-move="down" aria-label="Move {{ command_set.name }} down">↓</button>
+          <button class="danger compact" type="button" form="multi-ssh-run-form" data-ssh-runbook-remove aria-label="Remove {{ command_set.name }} from run">Remove</button>
+        </span>
+        {% if command_set.source == 'inline' %}
+        <details class="multi-ssh-inline-fields"><summary>Edit typed commands</summary><div class="form"><label>Commands for {{ command_set.name }}<textarea rows="5" data-ssh-inline-commands form="multi-ssh-run-form" data-unsaved-ignore>{{ command_set.commands }}</textarea></label><label>Timeout per command (seconds)<input type="number" min="1" max="3600" value="{{ command_set.command_timeout }}" data-ssh-inline-timeout form="multi-ssh-run-form" data-unsaved-ignore></label></div></details>
+        {% endif %}
+      </article>
+      {% endfor %}
+      <div class="multi-ssh-runbook-empty" data-ssh-runbook-empty {% if selected_run_actions %}hidden{% endif %}><strong>No commands selected</strong><p>Add saved commands above, or type commands beside this list. Nothing runs until step 3.</p></div>
+    </div>
+    <p class="field-note" data-ssh-composer-note role="status"></p>
+    <div class="button-row"><button type="button" form="multi-ssh-run-form" data-ssh-continue-review {% if not selected_run_actions %}disabled{% endif %}>Continue to review</button></div>
+  </section>
+  <section class="multi-ssh-workspace-card form">
+    <div class="multi-ssh-section-head"><div><h2>Type commands for this run</h2><p>These commands are not saved to the library.</p></div></div>
+    <label>Commands<textarea class="command-input" rows="7" name="inline_draft_commands" form="multi-ssh-run-form" data-ssh-inline-draft placeholder="show version&#10;show interfaces">{{ form.inline_draft_commands }}</textarea></label>
+    <details class="multi-ssh-exact-plan"><summary>Timeout and per-host values</summary><div class="form"><label>Timeout per command (seconds)<input name="inline_draft_timeout" type="number" min="1" max="3600" value="{{ form.inline_draft_timeout }}" form="multi-ssh-run-form" data-ssh-inline-draft-timeout></label><p class="field-note">Use {% for variable in selected_matrix.variables %}<code>{{ '{{ ' ~ variable ~ ' }}' }}</code>{% if not loop.last %}, {% endif %}{% endfor %} for per-host values.</p></div></details>
+    <div class="button-row"><button class="secondary" type="button" form="multi-ssh-run-form" data-ssh-add-inline disabled>Add typed commands</button><button class="secondary" type="button" form="multi-ssh-run-form" data-ssh-discard-inline>Clear typed draft</button></div>
+  </section>
+</div>

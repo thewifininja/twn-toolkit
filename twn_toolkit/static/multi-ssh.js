@@ -14,6 +14,7 @@
     document.querySelectorAll('input[name="workspace"]').forEach((input) => {
       if (input.closest(".multi-ssh-matrix-picker")) input.value = workspace;
     });
+    document.dispatchEvent(new CustomEvent('twn:ssh-workspace', { detail: { workspace } }));
     if (updateUrl) {
       const url = new URL(window.location.href);
       url.searchParams.set("workspace", workspace);
@@ -84,6 +85,7 @@
       const dirty = [...drafts].some(([key, draft]) => changed(key, draft));
       actionForm.dataset.unsavedInitial = String(dirty);
       if (!dirty) window.TwnUnsavedForms?.reset(actionForm);
+      document.dispatchEvent(new Event('twn:ssh-library-draft'));
     };
     const selectAction = (name) => {
       remember();
@@ -92,11 +94,11 @@
       Object.entries(fields).forEach(([key, field]) => { actionForm.elements.namedItem(field).value = draft[key]; });
       actionSelector.value = name;
       window.TwnSelectControls?.sync(actionSelector);
-      actionForm.querySelector(".eyebrow").textContent = name ? "Edit CLI action" : "Create CLI action";
-      actionForm.querySelector("h2").textContent = draft.name || "New reusable action";
+      actionForm.querySelector(".eyebrow").textContent = name ? "Edit saved commands" : "Create saved commands";
+      actionForm.querySelector("h2").textContent = draft.name || "New saved command set";
       const badge = actionForm.querySelector(".pill");
       if (badge) badge.hidden = true;
-      actionForm.querySelector('[value="save_matrix_action"]').textContent = name ? "Save changes" : "Save CLI action";
+      actionForm.querySelector('[value="save_matrix_action"]').textContent = name ? "Save library changes" : "Save to library";
       actionForm.querySelector("[data-ssh-action-delete]").hidden = !name;
       const url = new URL(window.location.href);
       url.searchParams.delete("new_action");
@@ -109,6 +111,14 @@
     document.querySelector("[data-ssh-new-action]")?.addEventListener("click", () => {
       selectAction("");
       actionForm.elements.namedItem("matrix_action_name").focus();
+    });
+    document.querySelector('[data-ssh-discard-library]')?.addEventListener('click', () => {
+      drafts.clear();
+      baseline.forEach((value, key) => drafts.set(key, { ...value }));
+      const draft = baseline.get(current) || empty;
+      Object.entries(fields).forEach(([key, field]) => { actionForm.elements.namedItem(field).value = draft[key]; });
+      remember();
+      window.TwnUnsavedForms?.reset(actionForm);
     });
     actionForm.addEventListener("input", remember);
     actionForm.addEventListener("submit", (event) => {
@@ -272,10 +282,13 @@
 
   const runForm = document.querySelector("[data-multi-ssh]");
   if (!runForm) return;
-  const selectedNames = () => [...runForm.querySelectorAll('[name="selected_actions"]')].map((input) => input.value);
+  const selectedNames = () => [...document.querySelectorAll('[data-ssh-runbook-action] input[name="selected_actions"]')].map((input) => input.value);
   document.querySelectorAll(".multi-ssh-action-editor, .multi-ssh-action-copy-form, [data-ssh-host-form], [data-ssh-action-picker]").forEach((form) => {
     form.addEventListener("submit", () => {
       form.querySelectorAll('[name="selected_actions"]').forEach((input) => input.remove());
+      setHidden(form, 'run_steps', runForm.querySelector('[data-ssh-run-steps]')?.value || '');
+      setHidden(form, 'inline_draft_commands', document.querySelector('[data-ssh-inline-draft]')?.value || '');
+      setHidden(form, 'inline_draft_timeout', document.querySelector('[data-ssh-inline-draft-timeout]')?.value || '300');
       selectedNames().forEach((name) => {
         const input = document.createElement("input");
         input.type = "hidden";
@@ -292,14 +305,55 @@
   const preview = runForm.querySelector("[data-ssh-preview]");
   const previewButton = runForm.querySelector("[data-ssh-preview-button]");
   const summary = runForm.querySelector("[data-ssh-run-summary]");
-  const runbook = runForm.querySelector("[data-ssh-runbook]");
-  const runbookPicker = runForm.querySelector("[data-ssh-runbook-picker]");
-  const runbookAdd = runForm.querySelector("[data-ssh-runbook-add]");
-  const runbookCount = runForm.querySelector("[data-ssh-runbook-count]");
-  const runbookEmpty = runForm.querySelector("[data-ssh-runbook-empty]");
+  const runbook = document.querySelector("[data-ssh-runbook]");
+  const runbookPicker = document.querySelector("[data-ssh-runbook-picker]");
+  const runbookAdd = document.querySelector("[data-ssh-runbook-add]");
+  const runbookCount = document.querySelector("[data-ssh-runbook-count]");
+  const runbookEmpty = document.querySelector("[data-ssh-runbook-empty]");
   const hostCount = Number(runForm.dataset.sshHostCount || 0);
 
   const reviewContent = runForm.querySelector('[data-ssh-review-content]');
+  const connectionContent = runForm.querySelector('[data-ssh-connection-content]') || reviewContent;
+  const stepsInput = runForm.querySelector('[data-ssh-run-steps]');
+  const inlineDraft = document.querySelector('[data-ssh-inline-draft]');
+  const inlineTimeout = document.querySelector('[data-ssh-inline-draft-timeout]');
+  const addInline = document.querySelector('[data-ssh-add-inline]');
+  const continueReview = document.querySelector('[data-ssh-continue-review]');
+  const composerNote = document.querySelector('[data-ssh-composer-note]');
+  const finalSummary = runForm.querySelector('[data-ssh-final-summary]');
+  const serializeSteps = () => [...(runbook?.querySelectorAll('[data-ssh-runbook-action]') || [])].map((row) =>
+    row.dataset.stepSource === 'inline'
+      ? { source: 'inline', id: row.dataset.stepId, name: row.dataset.sshRunbookAction,
+          commands: row.querySelector('[data-ssh-inline-commands]').value,
+          command_timeout: row.querySelector('[data-ssh-inline-timeout]').value }
+      : { source: 'saved', name: row.dataset.sshRunbookAction });
+  const updateFinalReadiness = () => {
+    if (!reviewContent || !runButton) return;
+    const count = runbook?.querySelectorAll('[data-ssh-runbook-action]').length || 0;
+    const draftPending = Boolean(inlineDraft?.value.trim());
+    const libraryPending = actionForm?.dataset.unsavedInitial === 'true';
+    const hostsPending = Boolean(window.TwnUnsavedForms?.hasChanges(hostForm));
+    const invalidInline = [...(runbook?.querySelectorAll('[data-ssh-inline-timeout]') || [])].some((field) => !field.validity.valid);
+    if (inlineTimeout) inlineTimeout.disabled = !draftPending;
+    const username = runForm.querySelector('[name=username]');
+    const password = runForm.querySelector('[name=password]');
+    const port = runForm.querySelector('[name=port]');
+    const credentialsPresent = Boolean(username?.value.trim() && password?.value.length);
+    let next = !count ? 'Add commands in step 2.'
+      : draftPending ? 'Add or clear the typed draft in Commands.'
+      : hostsPending ? 'Save host edits in Hosts before reviewing this run.'
+      : invalidInline ? 'Correct typed command timeouts in Commands.'
+      : libraryPending ? 'Save or discard library edits in Commands.'
+      : !token?.value ? 'Command review is not current.'
+      : !port?.validity.valid ? 'Enter a valid SSH port.'
+      : !credentialsPresent ? 'Enter username and password.'
+      : 'Command review is current. Ready to submit; connection checks happen when running.';
+    runButton.disabled = !count || draftPending || hostsPending || invalidInline || libraryPending || !token?.value || !port?.validity.valid || !credentialsPresent;
+    if (finalSummary) finalSummary.textContent = `${hostCount} host(s) · ${count} command set(s). ${next}`;
+    if (addInline) addInline.disabled = !draftPending;
+    if (continueReview) continueReview.disabled = !count || draftPending || invalidInline;
+    if (composerNote) composerNote.textContent = invalidInline ? 'Correct the timeout in the selected typed commands (1–3600 seconds).' : draftPending ? 'Typed draft is not in this run yet. Click Add typed commands.' : '';
+  };
   const runButton = runForm.querySelector('[data-ssh-run-button]');
   let reviewGeneration = 0;
   let reviewTimer;
@@ -315,23 +369,23 @@
       const current = readChoices();
       choicesState.value = current === initialChoices ? '' : current;
     }
-    const choiceSummary = reviewContent?.querySelector('[data-ssh-choice-summary]');
+    const choiceSummary = connectionContent?.querySelector('[data-ssh-choice-summary]');
     if (choiceSummary) {
-      const unknown = reviewContent.querySelectorAll('[name="unknown_key_hosts"]:checked').length;
-      const legacy = reviewContent.querySelectorAll('[name="legacy_algorithm_hosts"]:checked').length;
-      const total = reviewContent.querySelectorAll('[name="unknown_key_hosts"]').length;
+      const unknown = connectionContent.querySelectorAll('[name="unknown_key_hosts"]:checked').length;
+      const legacy = connectionContent.querySelectorAll('[name="legacy_algorithm_hosts"]:checked').length;
+      const total = connectionContent.querySelectorAll('[name="unknown_key_hosts"]').length;
       choiceSummary.textContent = `Unrecognized keys: ${unknown}/${total} hosts · Legacy algorithms: ${legacy}/${total} hosts.`;
     }
-    reviewContent?.querySelectorAll('[data-ssh-choice-all]').forEach((all) => {
-      const fields = [...reviewContent.querySelectorAll(`input[name="${all.dataset.sshChoiceAll}"]`)];
+    connectionContent?.querySelectorAll('[data-ssh-choice-all]').forEach((all) => {
+      const fields = [...connectionContent.querySelectorAll(`input[name="${all.dataset.sshChoiceAll}"]`)];
       const checked = fields.filter((field) => field.checked).length;
       all.checked = fields.length > 0 && checked === fields.length;
       all.indeterminate = checked > 0 && checked < fields.length;
     });
   };
-  reviewContent?.addEventListener('change', (event) => {
+  connectionContent?.addEventListener('change', (event) => {
     const all = event.target.closest('[data-ssh-choice-all]');
-    if (all) reviewContent.querySelectorAll(`input[name="${all.dataset.sshChoiceAll}"]`)
+    if (all) connectionContent.querySelectorAll(`input[name="${all.dataset.sshChoiceAll}"]`)
       .forEach((field) => { field.checked = all.checked; });
     syncChoiceGroups();
   });
@@ -343,10 +397,11 @@
     // connection permissions as part of an automatic review request.
     ['username', 'password', 'confirm_execution', 'unknown_key_hosts',
       'legacy_algorithm_hosts', 'allow_unknown_hosts', 'allow_legacy_algorithms',
-      'per_host_options', 'connection_choices_draft', 'runbook_draft', 'preview_token'].forEach((name) => body.delete(name));
+      'per_host_options', 'connection_choices_draft', 'runbook_draft', 'preview_token', 'inline_draft_commands', 'inline_draft_timeout'].forEach((name) => body.delete(name));
     body.set('action', 'preview');
     if (token) token.value = '';
     if (runButton) runButton.disabled = true;
+    updateFinalReadiness();
     status.hidden = false;
     status.textContent = 'Preparing command review…';
     try {
@@ -361,23 +416,25 @@
       if (generation !== reviewGeneration) return;
       if (!response.ok) throw new Error(payload.error || 'Unable to prepare review.');
       // Carry only the user's current, explicit choices for unchanged host names.
-      const choices = [...reviewContent.querySelectorAll('input[type=checkbox]:checked')]
+      const choices = [...connectionContent.querySelectorAll('input[type=checkbox]:checked')]
         .map((input) => [input.name, input.value]);
-      const overridesOpen = reviewContent.querySelector('[data-ssh-host-overrides]')?.open || false;
+      const overridesOpen = connectionContent.querySelector('[data-ssh-host-overrides]')?.open || false;
       reviewContent.innerHTML = payload.html;
-      const overrides = reviewContent.querySelector('[data-ssh-host-overrides]');
+      connectionContent.innerHTML = payload.connection_html;
+      const overrides = connectionContent.querySelector('[data-ssh-host-overrides]');
       if (overrides) overrides.open = overridesOpen;
-      reviewContent.querySelectorAll('input[type=checkbox]').forEach((input) => {
+      connectionContent.querySelectorAll('input[type=checkbox]').forEach((input) => {
         input.checked = choices.some(([name, host]) => name === input.name && host === input.value);
       });
       token.value = payload.token;
-      runButton.disabled = false;
-      status.textContent = 'Review is current. Click Run when ready.';
+      status.textContent = 'Command review is current.';
       updateRunSummary();
       syncChoiceGroups();
+      updateFinalReadiness();
     } catch (error) {
       if (generation !== reviewGeneration) return;
-      status.textContent = `${error.message} Use Refresh review to retry. Nothing has run.`;
+      status.textContent = `${error.message} Use Refresh command review to retry. Nothing has run.`;
+      updateFinalReadiness();
     }
   };
   const markPreviewStale = () => {
@@ -389,22 +446,25 @@
     ++reviewGeneration; // Reject an older response even before the next request.
     if (token) token.value = '';
     if (runButton) runButton.disabled = true;
+    updateFinalReadiness();
     status.hidden = false;
-    status.textContent = 'Runbook changed — updating review…';
+    status.textContent = 'Commands changed — updating review…';
     clearTimeout(reviewTimer);
     if (runbook?.querySelector('[data-ssh-runbook-action]')) {
       reviewTimer = setTimeout(refreshReview, 150);
     } else {
       // Removing the last action cancels this draft plan and its exceptions.
-      reviewContent.textContent = 'No command plan to review. Add an action to this run.';
+      reviewContent.textContent = 'No commands selected. Return to Commands to add them.';
+      connectionContent.textContent = 'Connection choices appear after commands are prepared.';
       syncChoiceGroups();
-      status.textContent = 'Add at least one CLI action. Nothing has run.';
+      status.textContent = 'Add commands in step 2. Nothing has run.';
+      updateFinalReadiness();
     }
   };
 
   runForm.querySelector('[name="port"]')?.addEventListener('input', () => {
     if (!reviewContent) return;
-    reviewContent.querySelectorAll('input[type=checkbox]').forEach((input) => { input.checked = false; });
+    connectionContent.querySelectorAll('input[type=checkbox]').forEach((input) => { input.checked = false; });
     syncChoiceGroups();
     markPreviewStale();
   });
@@ -414,6 +474,7 @@
     if (!runbook) return;
     const rows = [...(runbook?.querySelectorAll("[data-ssh-runbook-action]") || [])];
     const selected = rows.length;
+    if (stepsInput) stepsInput.value = JSON.stringify(serializeSteps());
     if (runbookState) {
       const current = JSON.stringify(rows.map((row) => row.dataset.sshRunbookAction));
       runbookState.value = current === initialRunbook ? '' : current;
@@ -425,29 +486,32 @@
       if (up) up.disabled = index === 0;
       if (down) down.disabled = index === rows.length - 1;
     });
-    const selectedNames = new Set(rows.map((row) => row.dataset.sshRunbookAction));
+    const selectedNames = new Set(rows.filter((row) => row.dataset.stepSource !== 'inline').map((row) => row.dataset.sshRunbookAction));
     [...(runbookPicker?.options || [])].forEach((option) => {
       if (option.value) option.disabled = selectedNames.has(option.value);
     });
     previewButton.disabled = selected === 0;
-    if (runbookCount) runbookCount.textContent = `${selected} action${selected === 1 ? "" : "s"}`;
+    if (runbookCount) runbookCount.textContent = `${selected} command set${selected === 1 ? "" : "s"}`;
     if (runbookEmpty) runbookEmpty.hidden = selected > 0;
     const currentSummary = runForm.querySelector('[data-ssh-run-summary]');
     if (currentSummary) {
       currentSummary.textContent = selected
-        ? `${selected} action(s) · ${hostCount} host(s) · ${selected * hostCount} action executions`
-        : "Add at least one CLI action to build a signed preview.";
+        ? `${hostCount} host(s) · ${selected} command set(s)`
+        : "Add commands in step 2 to prepare this run.";
     }
+    updateFinalReadiness();
   };
 
   const buildRunbookRow = (option) => {
     const row = document.createElement("article");
     row.className = "multi-ssh-runbook-row";
     row.dataset.sshRunbookAction = option.value;
+    row.dataset.stepSource = 'saved';
 
     const input = document.createElement("input");
     input.type = "hidden";
     input.name = "selected_actions";
+    input.setAttribute('form', 'multi-ssh-run-form');
     input.dataset.unsavedIgnore = "";
     input.value = option.value;
 
@@ -465,8 +529,8 @@
     description.append(name, variables);
 
     const readiness = document.createElement("span");
-    readiness.className = "pill success";
-    readiness.textContent = "ready";
+    readiness.className = "pill";
+    readiness.textContent = "Selected";
 
     const controls = document.createElement("span");
     controls.className = "button-row compact-actions";
@@ -478,6 +542,7 @@
       button.className = "secondary compact";
       button.type = "button";
       button.dataset.sshRunbookMove = direction;
+      button.setAttribute('form', 'multi-ssh-run-form');
       button.setAttribute("aria-label", label);
       button.textContent = text;
       controls.append(button);
@@ -486,7 +551,8 @@
     remove.className = "danger compact";
     remove.type = "button";
     remove.dataset.sshRunbookRemove = "";
-    remove.setAttribute("aria-label", `Remove ${option.value} from runbook`);
+    remove.setAttribute('form', 'multi-ssh-run-form');
+    remove.setAttribute("aria-label", `Remove ${option.value} from run`);
     remove.textContent = "Remove";
     controls.append(remove);
 
@@ -504,17 +570,22 @@
     runbook.insertBefore(buildRunbookRow(option), runbookEmpty || null);
     runbookPicker.value = "";
     runbookAdd.disabled = true;
+    const added = runbook.querySelector('[data-ssh-runbook-action]:last-of-type');
+    if (added) { added.tabIndex = -1; added.focus(); }
     markPreviewStale();
     updateRunSummary();
   });
   runbook?.addEventListener("click", (event) => {
     const row = event.target.closest("[data-ssh-runbook-action]");
     if (!row) return;
+    let focusAfter = null;
     if (event.target.closest("[data-ssh-runbook-remove]")) {
+      focusAfter = row.nextElementSibling?.querySelector('[data-ssh-runbook-remove]') || row.previousElementSibling?.querySelector('[data-ssh-runbook-remove]') || runbookPicker;
       row.remove();
     } else {
       const move = event.target.closest("[data-ssh-runbook-move]");
       if (!move) return;
+      focusAfter = move;
       const rows = [...runbook.querySelectorAll("[data-ssh-runbook-action]")];
       const index = rows.indexOf(row);
       if (move.dataset.sshRunbookMove === "up" && index > 0) {
@@ -527,7 +598,80 @@
     }
     markPreviewStale();
     updateRunSummary();
+    if (focusAfter?.disabled) focusAfter = row.querySelector('[data-ssh-runbook-move]:not(:disabled)') || row.querySelector('[data-ssh-runbook-remove]');
+    focusAfter?.focus();
   });
+  let inlineSequence = 0;
+  addInline?.addEventListener('click', () => {
+    if (!inlineDraft?.value.trim() || !runbook) return;
+    if (inlineTimeout && !inlineTimeout.validity.valid) {
+      inlineTimeout.closest('details').open = true;
+      inlineTimeout.reportValidity();
+      return;
+    }
+    const names = new Set([...runbook.querySelectorAll('[data-ssh-runbook-action]')].map((row) => row.dataset.sshRunbookAction));
+    do { ++inlineSequence; } while (names.has(`Typed commands ${inlineSequence}`));
+    const option = { value: `Typed commands ${inlineSequence}`, dataset: { variables: 'This run only' } };
+    const row = buildRunbookRow(option);
+    row.dataset.stepSource = 'inline';
+    row.dataset.stepId = crypto.randomUUID();
+    row.querySelector('input[name="selected_actions"]').remove();
+    row.querySelector('small').textContent = 'Typed · this run only';
+    const details = document.createElement('details');
+    details.className = 'multi-ssh-inline-fields';
+    const heading = document.createElement('summary');
+    heading.textContent = 'Edit typed commands';
+    const fields = document.createElement('div');
+    fields.className = 'form';
+    const commandsLabel = document.createElement('label');
+    commandsLabel.textContent = `Commands for ${option.value}`;
+    const commands = document.createElement('textarea');
+    commands.rows = 5;
+    commands.dataset.sshInlineCommands = '';
+    commands.dataset.unsavedIgnore = '';
+    commands.setAttribute('form', 'multi-ssh-run-form');
+    commands.value = inlineDraft.value;
+    commandsLabel.append(commands);
+    const timeoutLabel = document.createElement('label');
+    timeoutLabel.textContent = 'Timeout per command (seconds)';
+    const timeout = document.createElement('input');
+    Object.assign(timeout, { type: 'number', min: '1', max: '3600', value: inlineTimeout?.value || '300' });
+    timeout.dataset.sshInlineTimeout = '';
+    timeout.dataset.unsavedIgnore = '';
+    timeout.setAttribute('form', 'multi-ssh-run-form');
+    timeoutLabel.append(timeout);
+    fields.append(commandsLabel, timeoutLabel);
+    details.append(heading, fields);
+    row.append(details);
+    runbook.insertBefore(row, runbookEmpty || null);
+    inlineDraft.value = '';
+    if (inlineTimeout) inlineTimeout.value = '300';
+    markPreviewStale();
+    updateRunSummary();
+    row.tabIndex = -1;
+    row.focus();
+  });
+  document.querySelector('[data-ssh-discard-inline]')?.addEventListener('click', () => {
+    inlineDraft.value = '';
+    if (inlineTimeout) inlineTimeout.value = '300';
+    updateFinalReadiness();
+    inlineDraft.focus();
+  });
+  continueReview?.addEventListener('click', () => {
+    if (continueReview.disabled) return;
+    showWorkspace('run');
+    document.querySelector('[data-ssh-workspace-tab="run"]')?.focus();
+    updateFinalReadiness();
+  });
+  runbook?.addEventListener('input', () => {
+    updateRunSummary();
+    markPreviewStale();
+  });
+  document.addEventListener('input', (event) => {
+    if (event.target.form === runForm || event.target.form === hostForm) updateFinalReadiness();
+  });
+  document.addEventListener('twn:ssh-library-draft', updateFinalReadiness);
+  document.addEventListener('twn:ssh-workspace', updateFinalReadiness);
   updateRunSummary();
   if (reviewContent && runbook?.querySelector('[data-ssh-runbook-action]')) refreshReview();
 
@@ -539,7 +683,7 @@
       refreshReview();
       return;
     }
-    if (action === 'run' && reviewContent && !token?.value) {
+    if (action === 'run' && reviewContent && runButton?.disabled) {
       event.preventDefault();
       status.textContent = 'Wait for a current review before running.';
       return;

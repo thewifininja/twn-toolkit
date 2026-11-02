@@ -44,7 +44,10 @@
         controls.forEach(([field, disabled]) => { field.disabled = disabled; });
         pending = false;
         window.TwnUnsavedForms?.settle(form);
-        if (accepted) window.TwnUnsavedForms?.reset(form);
+        if (accepted) {
+          form.dispatchEvent(new Event('input', { bubbles: true }));
+          window.TwnUnsavedForms?.reset(form);
+        }
         else window.TwnUnsavedForms?.failed(form);
       }
     });

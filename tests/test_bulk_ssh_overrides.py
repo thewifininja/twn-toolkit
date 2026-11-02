@@ -57,7 +57,7 @@ def review_markup(app, count, **form):
         f'Fixture {i} | host-{i}.test' for i in range(count)), 'show status', 10)
     preview['selected_actions'] = []
     with app.test_request_context():
-        return Markup(render_template('tools/_multi_ssh_review.html', preview=preview, form=form))
+        return Markup(render_template('tools/_multi_ssh_connection_choices.html', preview=preview, form=form))
 
 
 @pytest.mark.parametrize('count', [1, 2, 501])
