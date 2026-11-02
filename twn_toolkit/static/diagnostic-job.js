@@ -24,11 +24,13 @@
   let polling = false;
   let paused = false;
   let cancelPending = false;
+  let navigationSubmission = null;
+  let terminalJob = null;
   let timer;
 
-  const hasDraft = () => window.TwnUnsavedForms?.hasChanges
+  const hasDraft = () => Boolean(navigationSubmission) || (window.TwnUnsavedForms?.hasChanges
     ? window.TwnUnsavedForms.hasChanges()
-    : Boolean(document.querySelector('form[data-unsaved-form]'));
+    : Boolean(document.querySelector('form[data-unsaved-form]')));
   const showResultLink = () => {
     if (!resultLink) {
       resultLink = document.createElement("a");
@@ -40,6 +42,29 @@
     resultLink.className = "button-link secondary";
     resultLink.textContent = "View retained result in new tab";
   };
+  const reportRetainedCompletion = (job) => {
+    const outcome = job.state === "unknown" ? "Run outcome is unconfirmed." : `Run ${stateLabels[job.state]?.toLowerCase() || "finished"}.`;
+    status.textContent = navigationSubmission
+      ? `${outcome} Waiting for the new request's response. You can inspect this earlier run in a new tab.`
+      : `${outcome} Your settings are still here. Open the retained result in a new tab to inspect this run.`;
+    showResultLink();
+  };
+  // A native POST can be unchanged yet already in flight. Fence the old run's
+  // automatic refresh before navigation commits, without capturing form values
+  // or changing the browser's normal submission. Later validators/unsaved guards
+  // may still cancel dispatch; inspect final defaultPrevented after bubbling.
+  window.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (event.defaultPrevented || !(form instanceof HTMLFormElement)
+      || form.method.toLowerCase() !== "post" || (form.target && form.target.toLowerCase() !== "_self")) return;
+    navigationSubmission = event;
+    Promise.resolve().then(() => {
+      if (navigationSubmission === event && event.defaultPrevented) {
+        navigationSubmission = null;
+        if (terminalJob) reportRetainedCompletion(terminalJob);
+      }
+    });
+  });
   const retryStatus = (message) => {
     const button = document.createElement("button");
     button.type = "button";
@@ -78,14 +103,13 @@
       paused = false;
       if (!activeStates.includes(job.state)) {
         finished = true;
+        terminalJob = job;
         if (cancelButton) cancelButton.disabled = true;
         if (cancelNotice) showCancelNotice(job.state === "cancelled" ? "Run cancelled." : "Run finished. Inspect the retained result for its final state.");
         const state = panel.querySelector("[data-diagnostic-state]");
         if (state) state.textContent = stateLabels[job.state] || job.state.replaceAll("_", " ");
         if (hasDraft()) {
-          const outcome = job.state === "unknown" ? "Run outcome is unconfirmed." : `Run ${stateLabels[job.state]?.toLowerCase() || "finished"}.`;
-          status.textContent = `${outcome} Your new settings are still here. Open the retained result in a new tab to inspect this run.`;
-          showResultLink();
+          reportRetainedCompletion(job);
         } else {
           // This is a GET of the same retained run, never a repeat submission.
           window.location.reload();
@@ -128,6 +152,11 @@
       if (response.redirected && new URL(response.url).pathname.endsWith("/login")) {
         throw Object.assign(new Error("Sign in required"), { status: 401 });
       }
+      const expected = new URL(resultUrl, window.location.href);
+      const destination = response.redirected ? new URL(response.url) : null;
+      if (!destination || destination.pathname !== expected.pathname || destination.search !== expected.search) {
+        throw new Error("Unexpected cancellation response");
+      }
       accepted = true;
       if (!stopped && !finished) showCancelNotice("Cancellation requested — checking the retained run. Your new settings remain here.");
     } catch (error) {
@@ -146,6 +175,8 @@
 
   window.addEventListener("pagehide", () => { stopped = true; window.clearTimeout(timer); });
   window.addEventListener("pageshow", () => {
+    navigationSubmission = null;
+    if (terminalJob) reportRetainedCompletion(terminalJob);
     if (stopped && !finished) { stopped = false; paused = false; poll(); }
   });
   document.addEventListener("visibilitychange", () => {

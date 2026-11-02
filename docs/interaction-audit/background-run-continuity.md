@@ -22,6 +22,17 @@ link uses the original run identity and Agent prefix; it does not submit the
 new form. A missing guard on an opted-in page fails closed by retaining settings.
 No draft or credentials are added to browser storage.
 
+An unchanged valid native POST also needs protection: its server response can
+still be pending when the previous run finishes. The poller tracks same-tab
+native submission intent synchronously, without copying fields or preventing
+the original submission. After all handlers/unsaved guards run, a cancelled
+`submit` event clears that intent in a microtask. `pageshow` clears stale native
+intent on history restoration without resetting editor baselines. Async prevented
+submissions, dialog forms and new-tab forms do not set the fence. Direct legacy
+`form.submit()` bypasses native `submit` observers; current inspected diagnostic
+entry paths use normal submit controls, and this batch does not claim coverage
+for future code invoking that bypass.
+
 Shared-panel cancellation is a single explicit POST of the cancel form, followed
 by status GETs. It does not serialize the primary settings form or navigate away
 from a new draft. Duplicate clicks while cancellation is pending are ignored.
@@ -35,7 +46,9 @@ cannot reload the departed page. Terminal controls stop polling and disable
 cancellation. An unconfirmed outcome remains labelled unconfirmed.
 
 Owned active diagnostic jobs are projected separately from ten recent terminal
-jobs. The active projection is capped at the validated per-user maximum of 200,
+jobs. Active and terminal rows come from one SQL statement/snapshot, so a worker
+completion cannot produce contradictory duplicate rows between two queries.
+The active projection is capped at the validated per-user maximum of 200,
 selects only id/state/created and does not decrypt configurations in this raw
 store projection. Adapters such as Bulk SSH still load/decrypt authorized rows
 to obtain their display names; maximum-load page performance is unverified.
@@ -102,4 +115,16 @@ active-first history refinement, the focused history/continuity/UI suite on
 in-memory JavaScript model was executed separately in the host JS runtime and
 passed; this does not substitute for a real browser. Backend HTTP smoke checks
 returned 200 for the isolated fixture index and all three synthetic retained-job
-pages. Parent browser checks and final integrated aggregate remain pending.
+pages. Root later reproduced the native-POST race against the recorded `bd2c18c`
+baseline in the isolated browser fixture: an unchanged valid DNS submission
+received a new admission/303 on the server, while old-run completion reloaded
+the old result page before that acknowledgement reached the browser. Fixed-client
+browser verification and final integrated aggregate remain pending.
+
+Review follow-up checks add a deterministic second-connection completion during
+the history read and synthetic slow native admission that finishes the old run
+mid-request. The expanded 20-case in-memory model explicitly covers native
+in-flight fencing, later preventDefault, history reset, network throw, timeout
+and unexpected cancellation responses. Cancellation accepts only the expected
+retained-result redirect as an acknowledgement; other responses stay uncertain
+and status remains read-only.
