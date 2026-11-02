@@ -154,7 +154,7 @@
       }
       const expected = new URL(resultUrl, window.location.href);
       const destination = response.redirected ? new URL(response.url) : null;
-      if (!destination || destination.pathname !== expected.pathname || destination.search !== expected.search) {
+      if (!destination || destination.origin !== expected.origin || destination.pathname !== expected.pathname || destination.search !== expected.search) {
         throw new Error("Unexpected cancellation response");
       }
       accepted = true;
