@@ -2,6 +2,8 @@
 
 Audited baseline: `88c7c7d4da338340ea58e94f813982916c6db8d9`. This read-only audit made no product changes or live/device requests. It covers four tools, not the whole application.
 
+Current follow-up: [network failure continuity](network-failure-continuity.md) records the bounded DNS/NTP/RADIUS fixes and newer browser evidence. This document retains the historical source/isolated evidence; it does not establish current SNMP completion.
+
 ## Prioritized findings
 
 1. **NTP remembered-profile overwrite — source inferred.** `static/ntp-test.js` restores the remembered profile and dispatches change, whose handler replaces targets. An isolated invalid POST retained edited targets alongside the remembered profile on the server; actual browser execution of the overwrite was **not** performed. Next: reproduce in a supported browser, then restore remembered profiles only into an empty fresh form rather than posted/draft targets.
