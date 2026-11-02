@@ -37,8 +37,9 @@ cancellation. An unconfirmed outcome remains labelled unconfirmed.
 Owned active diagnostic jobs are projected separately from ten recent terminal
 jobs. The active projection is capped at the validated per-user maximum of 200,
 selects only id/state/created and never decrypts configurations for navigation.
-The existing scoped history disclosure shows an in-progress count and distinguishes
-View progress from View result. This is a bounded continuation index, not a new
+The existing scoped history disclosure shows active work first, with newest
+active runs first, exposes an in-progress count and distinguishes View progress
+from View result. This is a bounded continuation index, not a new
 unbounded all-history query or a new permission surface.
 
 ## All shared script consumers inspected

@@ -23,6 +23,7 @@ def build_fixture(directory):
     root = Path(directory).resolve()
     app = create_app(str(root)); app.testing = True
     app.config['SESSION_COOKIE_NAME'] = 'twn_continuity_fixture'
+    app.jinja_env.auto_reload = True
     assert DistributedSettingsStore(str(root)).get()['role'] == 'standalone'
     client = app.test_client()
     cases = {
