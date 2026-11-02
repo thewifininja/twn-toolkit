@@ -5,7 +5,7 @@
   <div>
     <span class="eyebrow">Persistent remote access</span>
     <h1>Remote Terminal</h1>
-    <p>Open persistent SSH, Telnet, or locally attached console sessions, and organize reusable connections with per-item availability controls.</p>
+    <p>Connect over SSH, Telnet, or a local console. Saved connections keep reusable settings; Recent sessions restores active shells or shows completed output.</p>
   </div>
   <div class="remote-terminal-primary-actions">
     {% if mso_available %}<a class="button-link secondary" href="{{ url_for('tools.mso_conflicts') }}">MSO conflicts</a>{% endif %}
@@ -105,7 +105,7 @@
           <h2>Recent sessions</h2>
           <p>Restore an active shell or inspect retained scrollback from a completed connection.</p>
         </div>
-        <span id="remote-terminal-session-count">{{ remote_sessions|length }} retained</span>
+        <div class="button-row"><span id="remote-terminal-session-count">{{ remote_sessions|length }} retained</span><button type="button" class="secondary compact" data-refresh-remote-sessions>Refresh recent sessions</button></div>
       </div>
       <div class="remote-terminal-session-list" id="remote-terminal-session-list"></div>
       <p class="empty-state" id="remote-terminal-empty" {% if remote_sessions %}hidden{% endif %}>No remote sessions have been opened yet.</p>
@@ -114,12 +114,14 @@
 </section>
 
 <dialog class="remote-terminal-dialog remote-quick-connect-dialog" id="remote-quick-connect-dialog" aria-labelledby="remote-quick-connect-title">
-  <form class="form remote-terminal-dialog-form" id="remote-terminal-form" data-start-url="{{ url_for('tools.start_remote_terminal_session') }}">
+  <form class="form remote-terminal-dialog-form" id="remote-terminal-form" data-unsaved-form data-start-url="{{ url_for('tools.start_remote_terminal_session') }}" data-sessions-url="{{ url_for('tools.remote_terminal_sessions') }}">
     <header>
       <div><span class="eyebrow">Temporary connection</span><h2 id="remote-quick-connect-title">Quick connect</h2></div>
       <button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button>
     </header>
-    <p class="remote-terminal-dialog-intro">Connect without adding this host to your saved connections. The session remains available for reconnection until it is stopped or expires.</p>
+    <p class="remote-terminal-dialog-intro">Connect without adding this host to your saved connections. You can restore the same active shell from Recent sessions. Once it ends, Connect again reviews a new connection; previous output stays available.</p>
+    <div class="message warning" data-quick-reconnect-note role="status" hidden></div>
+    <button type="button" class="secondary" data-quick-replace-draft hidden>Replace draft with previous connection details</button>
     <section class="remote-terminal-dialog-section">
       <div class="remote-terminal-dialog-section-head">
         <h3>Connection</h3>
