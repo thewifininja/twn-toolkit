@@ -74,7 +74,9 @@ def register_sftp_routes(tools_bp):
             expected_total=len(job['config']['hosts']) * len(job['config']['paths'])) if job else None
         recent = store.recent(user['id'], 'transfer', include_summary=True)
         for item in recent:
-            display = transfer_display(item)
+            # Current rows may reveal a contradiction not available in history's
+            # summary-only projection. Keep this run's visible surfaces identical.
+            display = transfer_view if job and item['id'] == job['id'] else transfer_display(item)
             item.update(display_label=display['label'], display_tone=display['tone'])
         for row in results or []:
             row['size_display'] = format_bytes(int(row.get('size', 0)))

@@ -18,8 +18,12 @@ These descriptions could contradict the actual per-file results and case outcome
 - A shared completed-file classifier preserves the existing case/audit semantics.
   Display outcome is separate from raw execution state; no durable state/receipt
   or transfer permission is changed. Valid successful counts, entire retained rows
-  and expected host/file count support a complete claim. Missing or contradictory
-  evidence is explicitly unconfirmed.
+  and expected host/file count support a complete claim. Positive counts alone
+  are insufficient: ZIP needs its archive receipt; Datastore needs matching
+  published paths, corroborated by successful rows on the opened result. Future
+  summaries include nonsecret output-mode metadata; legacy summaries infer it
+  only from destination receipts. Missing or contradictory evidence is explicitly
+  unconfirmed.
 - Current result headline, run bar, status response, progress copy and history
   project that outcome. A successful worker with failed files is partial/failed,
   not green “Finished.” Pagination uses the whole run for its headline and labels
@@ -35,7 +39,10 @@ These descriptions could contradict the actual per-file results and case outcome
   Setup says “Review transfer settings,” rather than claiming readiness.
 - History optionally decrypts only its bounded owned summary projection, never
   stored configurations/passwords. The default history row shape is unchanged.
-  Damaged history summaries are unconfirmed without hiding the other runs.
+  Damaged history summaries are unconfirmed without hiding the other runs. The
+  opened job reuses its row-validated display outcome in its history row. Other
+  history entries are summary-proof projections until opened, not claims that
+  every retained row was reread or every artifact remains available.
 - Shared components accept optional display labels/messages; other diagnostics
   retain their existing behavior. The separate continuity batch owns form dirty-
   state and poller binding. Its active/terminal single-snapshot history SQL must

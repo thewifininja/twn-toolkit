@@ -1,4 +1,6 @@
 """Worker completion does not prove that every requested file completed."""
+import json
+import re
 from unittest.mock import Mock
 
 import pytest
@@ -22,7 +24,7 @@ def result(status, host='one.test'):
     (2, 2, 'succeeded', 'Transfer complete'), (1, 2, 'incomplete', 'Partially complete'),
     (0, 2, 'failed', 'Transfer failed'), (0, 0, 'failed', 'Transfer failed')])
 def test_completed_projection_matches_case_and_audit_classification(successful, total, outcome, label):
-    display = transfer_display({'state': 'succeeded', 'summary': {'successful': successful, 'total': total}})
+    display = transfer_display({'state': 'succeeded', 'summary': {'successful': successful, 'total': total, 'archive': bool(successful)}})
     assert display['outcome'] == completed_transfer_outcome(successful, total) == outcome
     assert display['label'] == label
     assert (display['tone'] == 'success') == (outcome == 'succeeded')
@@ -203,3 +205,57 @@ def test_real_worker_case_audit_and_display_classify_the_same_file_outcome(trans
         assert client.get(f"/tools/multi-transfer/jobs/{claimed['id']}/download").status_code == 200
     else:
         assert client.get(f"/tools/multi-transfer/jobs/{claimed['id']}/download").status_code == 404
+
+
+@pytest.mark.parametrize('mode,statuses,published,stored,archive,typed,label', [
+    ('download',['success','success'],[],[],True,True,'Transfer complete'),
+    ('download',['success','error'],[],[],True,True,'Partially complete'),
+    ('download',['error','error'],[],[],False,True,'Transfer failed'),
+    ('download',['success','success'],[],[],False,True,'Outcome unconfirmed'),
+    ('download',['success','success'],[],[],False,False,'Outcome unconfirmed'),
+    ('datastore',['success','success'],['one','two'],['one','two'],False,True,'Transfer complete'),
+    ('datastore',['success','success'],['one','two'],['one','two'],False,False,'Transfer complete'),
+    ('datastore',['success','success'],[],['one','two'],False,True,'Outcome unconfirmed'),
+    ('datastore',['success','success'],['one'],['one','two'],False,True,'Outcome unconfirmed'),
+    ('datastore',['success','success'],['one','one'],['one','one'],False,True,'Outcome unconfirmed'),
+])
+def test_destination_proof_agrees_on_result_status_and_summary_only_history(transfer, mode, statuses, published, stored, archive, typed, label):
+    app, client, store = transfer
+    rows = [result(status, host) for status, host in zip(statuses, ['one.test','two.test'])]
+    for row,path in zip(rows,stored):
+        if row['status']=='success':row['stored_path']=path
+    identifier=saved_job(store,rows,mode=mode)
+    summary={'successful':statuses.count('success'),'total':2,'archive':archive,'published_paths':published}
+    if typed:summary['output_mode']=mode
+    with store.connect(write=True) as db:
+        db.execute('UPDATE diagnostic_jobs SET summary=? WHERE id=?', (store.cipher.seal(json.dumps(summary),identifier+':diagnostic-summary'),identifier))
+    result_page=client.get('/tools/multi-transfer',query_string={'job':identifier}).get_data(as_text=True)
+    overview=client.get('/tools/multi-transfer').get_data(as_text=True)
+    status=client.get(f'/tools/multi-transfer/jobs/{identifier}/status').json
+    assert status['state']=='succeeded' and status['display_label']==label
+    assert re.findall(r'recent-run-state">([^<]+)</span>',result_page)==[label]
+    assert re.findall(r'recent-run-state">([^<]+)</span>',overview)==[label]
+    assert label in result_page
+
+
+@pytest.mark.parametrize('rows,summary', [
+    ([result('success'),result('error')], {'successful':2,'total':2,'archive':True,'published_paths':[]}),
+    ([result('success'),result('success')], {'successful':2,'total':2,'archive':False,'published_paths':['one','two'],'output_mode':'datastore'}),
+])
+def test_opened_job_row_contradictions_override_its_history_projection(transfer, rows, summary):
+    app, client, store=transfer
+    mode='datastore' if summary.get('output_mode')=='datastore' else 'download'
+    identifier=saved_job(store,rows,mode=mode)
+    with store.connect(write=True) as db:
+        db.execute('UPDATE diagnostic_jobs SET summary=? WHERE id=?', (store.cipher.seal(json.dumps(summary),identifier+':diagnostic-summary'),identifier))
+    text=client.get('/tools/multi-transfer',query_string={'job':identifier}).get_data(as_text=True)
+    status=client.get(f'/tools/multi-transfer/jobs/{identifier}/status').json
+    assert status['display_label']=='Outcome unconfirmed'
+    assert re.findall(r'recent-run-state">([^<]+)</span>',text)==['Outcome unconfirmed']
+    assert 'Transfer complete' not in text
+
+
+@pytest.mark.parametrize('bad_mode',[[],{},True,'invalid'])
+def test_invalid_output_mode_receipt_never_claims_a_destination(bad_mode):
+    view=transfer_display({'state':'succeeded','summary':{'successful':2,'total':2,'archive':True,'published_paths':[],'output_mode':bad_mode}})
+    assert view['outcome']=='unknown'

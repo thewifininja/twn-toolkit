@@ -47,7 +47,7 @@ def execute_transfer(store, job, config):
     files = directory / 'files'
     files.mkdir(mode=0o700)
     published = []
-    summary = {'published_paths': published, 'archive': False}
+    summary = {'published_paths': published, 'archive': False, 'output_mode': form['output_mode']}
 
     def checkpoint(stage):
         summary['stage'] = stage
