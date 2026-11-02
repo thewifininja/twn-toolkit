@@ -185,9 +185,11 @@
               </div>
               <small class="field-note">Runs in the background and survives restarts.</small>
             </label>`;
-          const actionRows = choices.map((choice) => {
+          const knownIds = new Set(choices.map((choice) => choice.id));
+          const visibleChoices = [...choices, ...selectedActionIds.filter((id) => !knownIds.has(id)).map((id) => ({id, name:"Unavailable saved action", type:"Remove this selection before saving", missing:true}))];
+          const actionRows = visibleChoices.map((choice) => {
             const selected = selectedActionIds.includes(choice.id);
-            return `<label class="check automation-stage-action"><input type="checkbox" value="${escapeHtml(choice.id)}" ${selected ? "checked" : ""}><span><strong>${escapeHtml(choice.name)}</strong><small>${escapeHtml(choice.type)}</small></span></label>`;
+            return `<label class="check automation-stage-action ${choice.missing ? "warning" : ""}"><input type="checkbox" value="${escapeHtml(choice.id)}" ${selected ? "checked" : ""}><span><strong>${escapeHtml(choice.name)}</strong><small>${escapeHtml(choice.type)}</small></span></label>`;
           }).join("");
           card.innerHTML = `
             <header class="automation-stage-toolbar">
@@ -209,7 +211,8 @@
             </div>
             <section class="automation-stage-action-section">
               <header><div><strong>Actions</strong><small>Selected actions run in parallel.</small></div><span>${selectedActionIds.length} selected</span></header>
-              <div class="automation-stage-actions">${actionRows || '<p class="automation-stage-empty">No actions are available for this stage.</p>'}</div>
+              <div class="automation-stage-actions">${actionRows || '<p class="automation-stage-empty">No saved actions yet. Create one for this stage.</p>'}</div>
+              <a class="button-link secondary" href="${escapeHtml(stageBuilder.dataset.createActionUrl || "/automations/actions")}" target="_blank" rel="noopener" data-create-prerequisite="action" data-prerequisite-stage="${escapeHtml(stage.id)}">Create action for this stage</a>
             </section>`;
           list.append(card);
           card.querySelector("[data-stage-name]").addEventListener("input", (event) => {
@@ -256,7 +259,15 @@
           card.querySelector("[data-remove-stage]")?.addEventListener("click", () => { stages.splice(index, 1); syncStages(); renderStages(); });
         });
         syncStages();
+        form.dispatchEvent(new Event("automation:stages-changed"));
       };
+      form.addEventListener("automation:choices", (event) => {
+        if (!Array.isArray(event.detail?.actions)) return;
+        choices = event.detail.actions;
+        const stage = stages.find((item) => item.id === event.detail.stageId);
+        if (stage && event.detail.useId && choices.some((item) => item.id === event.detail.useId) && !stage.action_definition_ids.includes(event.detail.useId)) stage.action_definition_ids.push(event.detail.useId);
+        renderStages();
+      });
       addStage?.addEventListener("click", () => { stages.push({id:stageId(), name:`Stage ${stages.length + 1}`, continue_policy:"all_completed", delay_seconds:0, action_definition_ids:[]}); renderStages(); });
       renderStages();
     }

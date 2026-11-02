@@ -1,8 +1,9 @@
-{% macro schedule_form(values, definition=none) %}
+{% macro schedule_form(values, definition=none, builder=false) %}
   {% set config = definition.config if definition else values %}
   {% set definition_id = definition.id if definition else values.get('schedule_definition_id', '') %}
   {% set timezone_list_id = 'schedule-timezones-' ~ (definition_id or 'new') %}
-  <form data-unsaved-form data-unsaved-initial="{{ 'true' if form_error and form_section == 'schedule' and not definition else 'false' }}" class="form automation-form" method="post" action="{{ url_for('save_automation_schedule') }}">
+  <form {% if builder %}data-automation-prerequisite-form="schedule" id="automation-prerequisite-schedule-form"{% endif %} data-unsaved-form data-unsaved-initial="{{ 'true' if form_error and form_section == 'schedule' and not definition else 'false' }}" class="form automation-form" method="post" action="{{ url_for('save_automation_schedule') }}">
+    {% if builder %}<input type="hidden" name="response_mode" value="builder">{% endif %}
     {% if definition_id %}<input type="hidden" name="schedule_definition_id" value="{{ definition_id }}">{% endif %}
     <label>Schedule name
       <input name="schedule_name" maxlength="100" value="{{ definition.name if definition else values.get('schedule_name', '') }}" placeholder="Weekday maintenance window" required>
@@ -32,6 +33,6 @@
         <p class="empty" data-schedule-empty>No schedule rules yet.</p>
       </div>
     </div>
-    <div class="button-row"><button type="submit">{{ 'Update schedule' if definition else 'Save schedule' }}</button></div>
+    <div class="button-row" {% if builder %}hidden{% endif %}><button type="submit">{{ 'Save and use schedule' if builder else 'Update schedule' if definition else 'Save schedule' }}</button></div>
   </form>
 {% endmacro %}

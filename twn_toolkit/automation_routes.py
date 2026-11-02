@@ -119,6 +119,15 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             after=_definition_audit_snapshot(copied),
         )
 
+    def builder_response_mode() -> bool:
+        return request.form.get('response_mode') == 'builder' and request.accept_mimetypes.best == 'application/json'
+
+    def builder_saved(kind: str, definition: dict[str, Any]):
+        response = jsonify(definition={'kind': kind, **{key: str(definition[key]) for key in ('id', 'name', 'type')}})
+        response.status_code = 201
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
     def render_page(
         *,
         page_section: str = "automations",
@@ -236,6 +245,7 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             condition_definitions=condition_definitions,
             schedule_definitions=schedule_definitions,
             action_definitions=action_definitions,
+            builder_choices=store.builder_choices(),
             action_choices=[
                 {"id": item["id"], "name": item["name"], "type": item["type"]}
                 for item in action_definitions
@@ -305,6 +315,13 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     def automation_actions():
         require_admin()
         return render_page(page_section="actions")
+
+    @app.get('/automations/builder/choices')
+    def automation_builder_choices():
+        require_admin()
+        response = jsonify(store.builder_choices())
+        response.headers['Cache-Control'] = 'no-store'
+        return response
 
     @app.post("/automations/save")
     def save_automation():
@@ -419,6 +436,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     @app.post("/automations/conditions/save")
     def save_automation_condition():
         require_admin()
+        if builder_response_mode() and request.form.get('condition_definition_id'):
+            return jsonify(error='Create a new condition here; edit existing definitions in the library.'), 400
         form = {key: value for key, value in request.form.items()}
         form["snmp_host_names"] = request.form.getlist("snmp_host_name")
         try:
@@ -437,6 +456,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 config=config,
             )
         except (ToolInputError, ValueError) as exc:
+            if builder_response_mode():
+                return jsonify(error=str(exc)), 400
             return render_page(
                 page_section="conditions",
                 form_error=str(exc), form=form, form_section="condition"
@@ -452,6 +473,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             before=_definition_audit_snapshot(before),
             after=_definition_audit_snapshot(after),
         )
+        if builder_response_mode():
+            return builder_saved('condition', after)
         flash(
             "Condition saved. Any automation using an edited condition was paused.",
             "success",
@@ -461,6 +484,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     @app.post("/automations/schedules/save")
     def save_automation_schedule():
         require_admin()
+        if builder_response_mode() and request.form.get('schedule_definition_id'):
+            return jsonify(error='Create a new schedule here; edit existing definitions in the library.'), 400
         form = {key: value for key, value in request.form.items()}
         try:
             form["rules"] = json.loads(request.form.get("schedule_rules_json", "[]"))
@@ -484,6 +509,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 config=config,
             )
         except (ToolInputError, ValueError) as exc:
+            if builder_response_mode():
+                return jsonify(error=str(exc)), 400
             return render_page(
                 page_section="schedules",
                 form_error=str(exc),
@@ -504,6 +531,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             before=_definition_audit_snapshot(before),
             after=_definition_audit_snapshot(after),
         )
+        if builder_response_mode():
+            return builder_saved('schedule', after)
         flash(
             "Schedule saved. Any automation using an edited schedule was paused.",
             "success",
@@ -513,6 +542,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
     @app.post("/automations/actions/save")
     def save_automation_action():
         require_admin()
+        if builder_response_mode() and request.form.get('action_definition_id'):
+            return jsonify(error='Create a new action here; edit existing definitions in the library.'), 400
         form = {key: value for key, value in request.form.items()}
         definition_id = request.form.get("action_definition_id", "")
         existing_config: dict[str, Any] = {}
@@ -533,6 +564,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
                 config=config,
             )
         except (ToolInputError, ValueError) as exc:
+            if builder_response_mode():
+                return jsonify(error=str(exc)), 400
             return render_page(
                 page_section="actions",
                 form_error=str(exc), form=form, form_section="action"
@@ -548,6 +581,8 @@ def register_automation_routes(app: Flask, store: AutomationStore) -> None:
             before=_definition_audit_snapshot(before),
             after=_definition_audit_snapshot(after),
         )
+        if builder_response_mode():
+            return builder_saved('action', after)
         flash(
             "Action saved. Any automation using an edited action was paused.",
             "success",

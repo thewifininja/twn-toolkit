@@ -80,6 +80,7 @@ def register_tools(registry) -> None:
     registry.map_endpoints(
         {
             "automations": "automation.home",
+            "automation_builder_choices": "automation.home",
             "save_automation": "automation.home",
             "duplicate_automation": "automation.home",
             "automation_conditions": "automation.conditions",
