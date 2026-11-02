@@ -434,6 +434,7 @@ def register_tools(registry: Any) -> None:
             "tools.lldp_session_status": "tools.lldp_lab",
             "tools.path_mtu": "tools.path_mtu",
             "tools.api_request": "tools.api_request",
+            "tools.api_request_admission": "tools.api_request",
             "tools.syslog_receiver": "tools.syslog_receiver",
             "tools.whats_my_ip": "tools.whats_my_ip",
             "tools.server_public_ip": "tools.whats_my_ip",

@@ -178,12 +178,15 @@ class DiagnosticToolTests(unittest.TestCase):
                     "truncated": False, "redirect": "",
                 },
             ):
+                admission = client.get("/tools/api-request/admission").json["token"]
                 page = client.post("/tools/api-request", data={
+                    "admission_token": admission, "write_consent": "yes",
                     "method": "POST", "url": "https://example.test/private-path",
                     "headers": "Authorization: Bearer super-secret",
                     "body": "hidden-payload", "timeout": "10", "verify_tls": "on",
                 })
-            self.assertIn(b"200 OK", page.data)
+            self.assertEqual(page.status_code, 303)
+            self.assertIn(b"HTTP 200", client.get(page.location).data)
             api_event = AuditStore(instance).recent(1)[0]
             audit_database = Path(instance, "audit.sqlite3").read_bytes()
             self.assertEqual(api_event["action"], "http.api_request.run_succeeded")

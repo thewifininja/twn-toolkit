@@ -4,17 +4,44 @@ import secrets
 import time
 from urllib.parse import urlsplit
 
-from flask import Blueprint, Response, render_template, request
+from flask import Blueprint, Response, current_app, g, jsonify, redirect, render_template, request, session, url_for, abort
 
 from .activity_context import record_current_activity
 from .audit import annotate_tool_run
-from .diagnostic_tools import parse_http_headers, send_api_request
+from .diagnostic_tools import _validate_api_request, parse_http_headers, send_api_request
+from .api_request_receipts import ApiRequestReceiptStore, ReceiptCapacityError
 from .network_tools import ToolInputError
 from .route_utils import disable_client_caching
 from .investigation_context import record_current_investigation_event
 
 
 def register_api_request_routes(tools_bp: Blueprint) -> None:
+    def store():
+        return ApiRequestReceiptStore(current_app.instance_path)
+
+    def issue():
+        try:
+            return store().issue(owner())
+        except ReceiptCapacityError:
+            return ""
+
+    def owner():
+        user = getattr(g, "current_user", None)
+        if user:
+            return str(user["id"])
+        # Setup-mode browsers remain isolated even before an account exists.
+        if "api_request_owner" not in session:
+            session["api_request_owner"] = secrets.token_hex(16)
+        return "setup:" + session["api_request_owner"]
+
+    @tools_bp.get("/api-request/admission")
+    def api_request_admission():
+        token = issue()
+        response = jsonify(token=token, error="Send preparation is busy. Wait for older receipts to expire." if not token else "")
+        response.status_code = 200 if token else 503
+        disable_client_caching(response)
+        return response
+
     @tools_bp.route("/api-request", methods=["GET", "POST"])
     def api_request():
         form = {
@@ -28,6 +55,13 @@ def register_api_request_routes(tools_bp: Blueprint) -> None:
         result = None
         journal_event = None
         error = ""
+        receipt = None
+        submitted_token = request.form.get("admission_token", "")
+        dispatched = False
+        if request.method == "GET" and request.args.get("receipt"):
+            receipt = store().get(owner(), request.args["receipt"])
+            if receipt is None:
+                abort(404)
         if request.method == "POST":
             operation_id = f"api-request:{secrets.token_hex(12)}"
             journal_started_at = time.time()
@@ -39,69 +73,106 @@ def register_api_request_routes(tools_bp: Blueprint) -> None:
                 "timeout": request.form.get("timeout", "10").strip(),
                 "verify_tls": request.form.get("verify_tls") == "on",
             }
+            response_status = 400
+            recording_warning = ""
             try:
+                parsed_headers = parse_http_headers(form["headers"])
+                timeout = float(form["timeout"])
+                _validate_api_request(form["method"], form["url"], timeout)
+                if form["method"].upper() not in {"GET", "HEAD", "OPTIONS"} and request.form.get("write_consent") != "yes":
+                    raise ToolInputError("Confirm that you intend to send this write request.")
+                if not store().claim(owner(), submitted_token):
+                    response_status = 409
+                    raise ToolInputError("This send token is unavailable, expired, or already used. No new request was sent. Reconcile any previous operation before preparing another send.")
+                dispatched = True
                 result = send_api_request(
                     form["method"],
                     form["url"],
-                    headers=parse_http_headers(form["headers"]),
+                    headers=parsed_headers,
                     body=form["body"],
-                    timeout=float(form["timeout"]),
+                    timeout=timeout,
                     verify_tls=form["verify_tls"],
                 )
-            except (ToolInputError, TypeError, ValueError) as exc:
-                error = str(exc) or "Enter valid API request settings."
-                record_current_activity("HTTP", "Sent API request", "Request failed")
-            else:
-                record_current_activity(
-                    "HTTP",
-                    "Sent API request",
-                    f"{form['method']} · HTTP {result['status']}",
-                    counters={"api": {"requests": 1}},
+            except Exception as exc:
+                if dispatched:
+                    error = "No response was confirmed. The remote operation may already have executed; reconcile it before deliberately sending again."
+                elif isinstance(exc, ToolInputError):
+                    error = str(exc)
+                elif isinstance(exc, (TypeError, ValueError)):
+                    error = "Enter a valid numeric timeout and API request settings."
+                else:
+                    error = "The send could not be admitted. No new request was started; check this instance before trying again."
+                    response_status = 503
+            if dispatched:
+                try:
+                    store().finish(owner(), submitted_token, confirmed=result is not None,
+                        status=result.get("status") if result else None,
+                        elapsed_ms=result.get("elapsed_ms") if result else None,
+                        bytes=result.get("bytes") if result else None,
+                        truncated=result.get("truncated") if result else None)
+                except Exception:
+                    recording_warning = "Receipt metadata could not be updated. Do not infer remote failure or resend from this warning."
+            try:
+                record_current_activity("HTTP", "Sent API request" if dispatched else "API request not sent",
+                    f"{form['method']} · HTTP {result['status']}" if result else "Response unconfirmed" if dispatched else "Not sent",
+                    counters={"api": {"requests": 1}} if result else {})
+                annotate_tool_run(
+                    category="Network tools",
+                    action_namespace="http.api_request",
+                    tool_name="API request",
+                    outcome="failed" if error else "succeeded",
+                    details={
+                        "HTTP method": str(form["method"]).upper(),
+                        "remote status code": result.get("status") if result else None,
+                        "TLS verification enabled": bool(form["verify_tls"]),
+                    },
                 )
-            annotate_tool_run(
-                category="Network tools",
-                action_namespace="http.api_request",
-                tool_name="API request",
-                outcome="failed" if error else "succeeded",
-                details={
-                    "HTTP method": str(form["method"]).upper(),
-                    "remote status code": result.get("status") if result else None,
-                    "TLS verification enabled": bool(form["verify_tls"]),
-                },
-            )
-            target = _journal_api_origin(form["url"])
-            safe_result = _journal_api_result(result)
-            journal_event = record_current_investigation_event(
-                operation_id=operation_id,
-                event_type="diagnostic.failed" if error else "diagnostic.completed",
-                tool_id="tools.api_request",
-                action="API request",
-                outcome="failed" if error else "succeeded",
-                summary=(
-                    f"API request failed: {error}"
-                    if error
-                    else f"Sent {form['method'].upper()} request to {target}: HTTP {result['status']}."
-                ),
-                targets={"origin": target},
-                parameters={
-                    "method": form["method"].upper(),
-                    "timeout_seconds": form["timeout"],
-                    "verify_tls": form["verify_tls"],
-                    "request_header_names": _journal_header_names(form["headers"]),
-                    "request_body_bytes": len(form["body"].encode("utf-8")),
-                },
-                metrics={
-                    "status": safe_result.get("status"),
-                    "elapsed_ms": safe_result.get("elapsed_ms"),
-                    "response_bytes": safe_result.get("bytes"),
-                    "response_truncated": safe_result.get("truncated"),
-                }
-                if safe_result
-                else {},
-                details={"error": error, "result": safe_result},
-                started_at=journal_started_at,
-                completed_at=time.time(),
-            )
+                target = _journal_api_origin(form["url"])
+                safe_result = _journal_api_result(result)
+                journal_event = record_current_investigation_event(
+                    operation_id=operation_id,
+                    event_type="diagnostic.failed" if error else "diagnostic.completed",
+                    tool_id="tools.api_request",
+                    action="API request",
+                    outcome="failed" if error else "succeeded",
+                    summary=(
+                        f"API request failed: {error}"
+                        if error
+                        else f"Sent {form['method'].upper()} request to {target}: HTTP {result['status']}."
+                    ),
+                    targets={"origin": target},
+                    parameters={
+                        "method": form["method"].upper(),
+                        "timeout_seconds": form["timeout"],
+                        "verify_tls": form["verify_tls"],
+                        "request_header_names": _journal_header_names(form["headers"]),
+                        "request_body_bytes": len(form["body"].encode("utf-8")),
+                    },
+                    metrics={
+                        "status": safe_result.get("status"),
+                        "elapsed_ms": safe_result.get("elapsed_ms"),
+                        "response_bytes": safe_result.get("bytes"),
+                        "response_truncated": safe_result.get("truncated"),
+                    }
+                    if safe_result
+                    else {},
+                    details={"error": error, "result": safe_result},
+                    started_at=journal_started_at,
+                    completed_at=time.time(),
+                )
+            except Exception:
+                recording_warning = "Activity or case recording could not be confirmed. This does not undo the HTTP operation."
+            if request.accept_mimetypes.best == "application/json":
+                response = jsonify(admission_token=submitted_token, next_token=issue(),
+                    result=result, error=error, dispatched=dispatched, recording_warning=recording_warning,
+                    receipt_url=url_for("tools.api_request", receipt=submitted_token) if dispatched else None)
+                response.status_code = 200 if dispatched else response_status
+                disable_client_caching(response)
+                return response
+            if dispatched:
+                response = redirect(url_for("tools.api_request", receipt=submitted_token), code=303)
+                disable_client_caching(response)
+                return response
         response = Response(
             render_template(
                 "tools/api_request.html",
@@ -109,8 +180,12 @@ def register_api_request_routes(tools_bp: Blueprint) -> None:
                 result=result,
                 error=error,
                 journal_event=journal_event,
+                admission_token=issue(),
+                receipt=receipt,
             )
         )
+        if request.method == "POST" and error:
+            response.status_code = response_status
         disable_client_caching(response)
         return response
 
@@ -131,7 +206,6 @@ def _journal_api_result(result: dict | None) -> dict:
         return {}
     return {
         "status": result.get("status"),
-        "reason": result.get("reason"),
         "elapsed_ms": result.get("elapsed_ms"),
         "resolved_addresses": result.get("resolved_addresses", []),
         "request_header_names": sorted((result.get("request_headers") or {}).keys()),
