@@ -5,8 +5,8 @@
 {% block content %}
 {% set has_results = results is not none %}
 {% set accepted_count = results|selectattr('status', 'equalto', 'Access-Accept')|list|length if has_results else 0 %}
-{% set initial_radius_tab = 'workflows' if has_results or (servers and credentials) else 'profiles' %}
-<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}" data-workspace-tabs data-initial-tab="{{ initial_radius_tab }}" data-forced-tab="{{ 'true' if has_results else 'false' }}" data-workspace-tabs-key="twn.radius-workspace-tab">
+{% set initial_radius_tab = 'workflows' if has_results or error or (servers and credentials) else 'profiles' %}
+<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}" data-workspace-tabs data-initial-tab="{{ initial_radius_tab }}" data-forced-tab="{{ 'true' if has_results or error else 'false' }}" data-workspace-tabs-key="twn.radius-workspace-tab">
 <nav class="tool-workspace-tabs" role="tablist" aria-label="RADIUS workspace">
   <button id="radius-workflows-tab" type="button" role="tab" data-workspace-tab="workflows" aria-controls="radius-workflows-panel" aria-selected="{{ 'true' if initial_radius_tab == 'workflows' else 'false' }}">
     <span>Run tests</span><small>Authenticate against one or more saved servers</small>
@@ -24,7 +24,7 @@
     <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {{ case_recorded_notice(journal_event) }}
-  {% if error %}<div class="message error">{{ error }}</div>{% endif %}
+  {% if error %}<div class="message error" role="alert"><p>{{ error }}</p>{% if profile_error %}<p>Review the required saved profiles in Profiles, then return to Run tests.</p><button class="secondary" type="button" data-radius-show-profiles>Open Profiles</button>{% endif %}</div>{% endif %}
   <div class="message warning radius-eap-warning" role="note">
     <strong>EAP testing temporarily disabled</strong>
     <p>{{ eap_disabled_reason }} Installing <code>eapol_test</code> will not enable this feature.</p>
@@ -40,7 +40,7 @@
           </label>
         {% endfor %}
       {% else %}
-        <span class="field-note">No servers saved. Open Profile Management below to add one.</span>
+        <span class="field-note">No servers saved. Add a server in the Profiles tab, then return to Run tests.</span>
       {% endif %}
     </fieldset>
     <div class="radius-run-grid">
@@ -233,7 +233,7 @@
   <span class="tool-status" id="radius-profile-status"></span>
 </section>
 </div>
-<script src="{{ url_for('static', filename='radius-test.js') }}"></script>
+<script src="{{ url_for('static', filename='radius-test.js', v=asset_version) }}"></script>
 <script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
 </div>
 {% endblock %}
