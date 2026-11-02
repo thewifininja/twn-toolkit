@@ -97,8 +97,15 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
     def remote_terminal_sessions():
         """Refresh retained state without starting or reconnecting any shell."""
         suppress_audit_event()
-        sessions = _manager().sessions_for_user(_current_user()["id"], include_finished=True)
-        response = jsonify({"sessions": [_public_session(item) for item in sessions]})
+        manager = _manager()
+        user_id = _current_user()["id"]
+        # Recent history is bounded, but refreshing it must not hide an older
+        # live shell merely because newer completed sessions filled that page.
+        recent = manager.sessions_for_user(user_id, include_finished=True)
+        active = manager.sessions_for_user(user_id, include_finished=False)
+        sessions = {str(item["id"]): item for item in [*recent, *active]}
+        ordered = sorted(sessions.values(), key=lambda item: float(item["created_at"]), reverse=True)
+        response = jsonify({"sessions": [_public_session(item) for item in ordered]})
         response.headers["Cache-Control"] = "no-store"
         return response
 
