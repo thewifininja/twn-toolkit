@@ -36,7 +36,9 @@ cancellation. An unconfirmed outcome remains labelled unconfirmed.
 
 Owned active diagnostic jobs are projected separately from ten recent terminal
 jobs. The active projection is capped at the validated per-user maximum of 200,
-selects only id/state/created and never decrypts configurations for navigation.
+selects only id/state/created and does not decrypt configurations in this raw
+store projection. Adapters such as Bulk SSH still load/decrypt authorized rows
+to obtain their display names; maximum-load page performance is unverified.
 The existing scoped history disclosure shows active work first, with newest
 active runs first, exposes an in-progress count and distinguishes View progress
 from View result. This is a bounded continuation index, not a new
@@ -92,3 +94,12 @@ submissions rejected/counted. Its control file modifies only fixture jobs.
 No real diagnostic, transfer, device mutation or live security action was tested.
 Parent independent review, final exact-head aggregate and any development rollout
 are separate gates; do not treat this source ledger as their completion.
+
+Validation checkpoint: the shared-consumer affected suite on `2bd7bcd` passed
+340 tests and 37 subtests, with one explicit Node-unavailable skip. After the
+active-first history refinement, the focused history/continuity/UI suite on
+`d9c3eaa` passed 81 tests and 37 subtests with the same Node skip. The 13-case
+in-memory JavaScript model was executed separately in the host JS runtime and
+passed; this does not substitute for a real browser. Backend HTTP smoke checks
+returned 200 for the isolated fixture index and all three synthetic retained-job
+pages. Parent browser checks and final integrated aggregate remain pending.
