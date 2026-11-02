@@ -11,7 +11,7 @@ module.exports = async function checkContinuity(source) {
     after(element) { this.afterElement = element; }
   }
   const reply = (state, status = 200) => ({ ok: status < 400, status, headers: { get: () => "application/json" }, json: async () => ({ state }) });
-  class FixtureURL { constructor(value) { const parts = value.replace(/^https?:\/\/[^/]+/, "").split("#")[0].split("?"); this.pathname = parts[0]; this.search = parts[1] ? "?" + parts[1] : ""; } }
+  class FixtureURL { constructor(value, base) { this.origin = (value.match(/^https?:\/\/[^/]+/) || (base || "https://fixture.test").match(/^https?:\/\/[^/]+/))[0]; const parts = value.replace(/^https?:\/\/[^/]+/, "").split("#")[0].split("?"); this.pathname = parts[0]; this.search = parts[1] ? "?" + parts[1] : ""; } }
   function setup({ dirty = false, guard = true, protectedForm = true } = {}) {
     const panel = new Element("section"), status = new Element("p"), state = new Element("span"), form = new Element("form"), cancel = new Element("button"), link = new Element("a");
     const draft = { value: "new unsent settings" };
@@ -177,6 +177,12 @@ module.exports = async function checkContinuity(source) {
     assert(!f.reloads && f.status.textContent.includes("new request"), "Provisional native intent did not protect completion");
     event.defaultPrevented = true; await f.endSubmit();
     assert(!f.reloads && !f.status.textContent.includes("new request") && f.link.target === "_blank", "Cancelled intent left stale pending message or discarded retained link");
+  });
+  await test("cross-origin cancellation redirect cannot acknowledge the owned run", async () => {
+    const f = setup({ dirty: true }); f.responses.push({ ok: true, redirected: true, url: "https://another.test/owned/old?job=first" }, reply("running"));
+    await f.form.events.submit({ preventDefault() {} }); await flush();
+    assert(f.form.afterElement.textContent.includes("could not be confirmed"), "Cross-origin same-path redirect falsely acknowledged cancellation");
+    assert(f.calls.filter(x => x.options.method === "POST").length === 1 && !f.reloads, "Cross-origin response caused replay or navigation");
   });
   return results;
 };

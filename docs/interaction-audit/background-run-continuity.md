@@ -126,9 +126,9 @@ pending.
 
 Review follow-up checks add a deterministic second-connection completion during
 the history read and synthetic slow native admission that finishes the old run
-mid-request. The expanded 21-case in-memory model explicitly covers native
+mid-request. The expanded 22-case in-memory model explicitly covers native
 in-flight fencing, later preventDefault, history reset, network throw, timeout
-and unexpected cancellation responses. Cancellation accepts only the expected
+and unexpected cancellation responses. Cancellation accepts only the same-origin expected
 retained-result redirect as an acknowledgement; other responses stay uncertain
 and status remains read-only.
 
