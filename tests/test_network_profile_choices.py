@@ -147,3 +147,22 @@ def test_helpers_drop_arbitrary_metadata_and_redact_compatibility_metadata():
 def test_choice_endpoints_use_existing_tool_registry_gates():
     assert tool_id_for_endpoint("tools.snmp_profile_choices") == "tools.snmp_test"
     assert tool_id_for_endpoint("tools.radius_profile_choices") == "tools.radius_test"
+
+
+@pytest.mark.parametrize("level", ["noauthnopriv", "authnopriv", "authpriv"])
+def test_v3_save_receipt_presence_matches_security_level(isolated, level):
+    app, client, path = isolated
+    response = save(client, "snmp", "credentials", {
+        "name": "Synthetic V3", "version": "v3", "username": "fixture-user",
+        "security_level": level, "auth_protocol": "sha256", "priv_protocol": "aes128",
+        "auth_key": "SyntheticAuthOnly", "priv_key": "SyntheticPrivacyOnly", "context_name": "fixture",
+    })
+    assert response.status_code == 200
+    profile = response.json["profile"]
+    assert profile["has_auth_key"] == (level != "noauthnopriv")
+    assert profile["has_priv_key"] == (level == "authpriv")
+    assert profile["has_community"] is False
+    for secret in ("SyntheticAuthOnly", "SyntheticPrivacyOnly"):
+        assert secret not in response.get_data(as_text=True)
+    choices = client.get("/tools/snmp-test/profile-choices")
+    assert set(choices.json["credentials"][0]) == {"name", "version"}

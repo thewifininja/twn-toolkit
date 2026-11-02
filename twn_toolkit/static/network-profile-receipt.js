@@ -12,6 +12,9 @@
     if (tool === 'snmp' && kind === 'credentials') {
       if (profile.version !== text('version').toLowerCase()) return false;
       if (profile.version === 'v3') {
+        const level = text('security_level').toLowerCase();
+        if (profile.has_auth_key !== (level !== 'noauthnopriv')
+          || profile.has_priv_key !== (level === 'authpriv')) return false;
         return profile.username === text('username')
           && profile.security_level === text('security_level').toLowerCase()
           && profile.auth_protocol === text('auth_protocol').toLowerCase()
