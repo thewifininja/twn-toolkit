@@ -28,7 +28,7 @@
   let terminalJob = null;
   let timer;
 
-  const hasDraft = () => Boolean(navigationSubmission) || (window.TwnUnsavedForms?.hasChanges
+  const hasDraft = () => Boolean(navigationSubmission && !navigationSubmission.defaultPrevented) || (window.TwnUnsavedForms?.hasChanges
     ? window.TwnUnsavedForms.hasChanges()
     : Boolean(document.querySelector('form[data-unsaved-form]')));
   const showResultLink = () => {
@@ -44,7 +44,7 @@
   };
   const reportRetainedCompletion = (job) => {
     const outcome = job.state === "unknown" ? "Run outcome is unconfirmed." : `Run ${stateLabels[job.state]?.toLowerCase() || "finished"}.`;
-    status.textContent = navigationSubmission
+    status.textContent = navigationSubmission && !navigationSubmission.defaultPrevented
       ? `${outcome} Waiting for the new request's response. You can inspect this earlier run in a new tab.`
       : `${outcome} Your settings are still here. Open the retained result in a new tab to inspect this run.`;
     showResultLink();
@@ -58,12 +58,12 @@
     if (event.defaultPrevented || !(form instanceof HTMLFormElement)
       || form.method.toLowerCase() !== "post" || (form.target && form.target.toLowerCase() !== "_self")) return;
     navigationSubmission = event;
-    Promise.resolve().then(() => {
+    window.setTimeout(() => {
       if (navigationSubmission === event && event.defaultPrevented) {
         navigationSubmission = null;
         if (terminalJob) reportRetainedCompletion(terminalJob);
       }
-    });
+    }, 0);
   });
   const retryStatus = (message) => {
     const button = document.createElement("button");
