@@ -37,6 +37,13 @@ def _record_radius_activity(
 
 
 def register_radius_routes(tools_bp: Blueprint) -> None:
+    @tools_bp.get("/radius-test/profile-choices")
+    def radius_profile_choices():
+        from .network_profile_choices import choices
+        response = jsonify(choices(current_app.instance_path, "radius"))
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     @tools_bp.route("/radius-test", methods=["GET", "POST"])
     def radius_test():
         server_store = _radius_profile_store("servers")
@@ -253,7 +260,8 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
             after=profile,
             credential_updated=credential_updated,
         )
-        return jsonify({"profile": {"name": name, **({"mso": profile["mso"]} if "mso" in profile else {})}})
+        from .network_profile_choices import save_acknowledgment
+        return jsonify({"profile": save_acknowledgment("radius", kind, profile)})
 
     @tools_bp.post("/radius-test/profiles/<kind>/delete")
     @mutation
@@ -297,7 +305,8 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
             category="Network tools", action_namespace=f"radius.{kind}",
             profile_type=profile_type, source=source, copied=copied,
         )
-        return jsonify({"profile": {"name": copied["name"]}})
+        from .network_profile_choices import choice
+        return jsonify({"profile": choice("radius", kind, copied), "source_name": name})
 
 
 def _radius_profile_store(kind: str) -> RadiusProfileStore:

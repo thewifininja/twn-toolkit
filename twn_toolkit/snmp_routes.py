@@ -90,6 +90,13 @@ def _journal_snmp_results(results: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 
 def register_snmp_routes(tools_bp: Blueprint) -> None:
+    @tools_bp.get("/snmp-test/profile-choices")
+    def snmp_profile_choices():
+        from .network_profile_choices import choices
+        response = jsonify(choices(current_app.instance_path, "snmp"))
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     @tools_bp.route("/snmp-test", methods=["GET", "POST"])
     def snmp_test():
         credential_store = _snmp_credential_store()
@@ -386,7 +393,8 @@ def register_snmp_routes(tools_bp: Blueprint) -> None:
             category="Network tools", action_namespace=f"snmp.{kind}",
             profile_type=profile_type, source=source, copied=copied,
         )
-        return jsonify({"profile": {"name": copied["name"]}})
+        from .network_profile_choices import choice
+        return jsonify({"profile": choice("snmp", kind, copied), "source_name": name})
 
     @tools_bp.post("/snmp-test/interfaces")
     def snmp_interfaces():
