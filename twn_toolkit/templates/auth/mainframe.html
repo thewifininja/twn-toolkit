@@ -102,7 +102,7 @@
       {{ section_header("Connected agents", "Approve an agent only after its displayed pairing code matches the code shown here once the secure transport is available.") }}
       {% if distributed_agents %}
         {% for agent in distributed_agents if agent.state == 'approved' and not agent.gui_compatible %}
-        <p class="message warning" data-agent-compatibility><strong>{{ agent.name }}: GUI update required</strong><br>{{ agent.gui_compatibility_error }}</p>
+        <p class="message{% if agent.gui_compatibility_status != 'awaiting_report' %} warning{% endif %}" data-agent-compatibility><strong>{{ agent.name }}: {{ agent.gui_compatibility_label }}</strong><br>{{ agent.gui_compatibility_error }}</p>
         {% endfor %}
         <div class="table-wrap mainframe-agent-table-wrap">
           <table class="mainframe-agent-table">
@@ -111,7 +111,7 @@
               {% for agent in distributed_agents %}
                 <tr>
                   <td><strong>{{ agent.name }}</strong><br><small>{{ agent.hostname or agent.id }}</small>{% if agent.toolkit_version %}<br><small>Toolkit {{ agent.toolkit_version }} · protocol {{ agent.protocol_version }}</small>{% endif %}{% if agent.platform %}<br><small>{{ agent.platform }}</small>{% endif %}</td>
-                  <td><span class="status-chip {{ 'success' if agent.online else 'muted' }}">{{ 'Online' if agent.online else 'Offline' }}</span>{% if agent.mso_status %}<br><small>MSO · {{ agent.mso_supported_types|length }} types</small>{% if agent.mso_missing %}<br><span class="status-chip warning">MSO upgrade required</span>{% endif %}{% endif %}{% if agent.state == 'approved' and not agent.gui_compatible %}<br><span class="status-chip warning">GUI update required</span>{% endif %}</td>
+                  <td><span class="status-chip {{ 'success' if agent.online and agent.gui_compatibility_status != 'awaiting_report' else 'muted' }}">{{ 'Awaiting heartbeat' if agent.gui_compatibility_status == 'awaiting_report' else ('Online' if agent.online else 'Offline') }}</span>{% if agent.mso_status %}<br><small>MSO · {{ agent.mso_supported_types|length }} types</small>{% if agent.mso_missing %}<br><span class="status-chip warning">MSO upgrade required</span>{% endif %}{% endif %}{% if agent.state == 'approved' and not agent.gui_compatible %}<br><span class="status-chip {{ 'muted' if agent.gui_compatibility_status == 'awaiting_report' else 'warning' }}">{{ agent.gui_compatibility_label }}</span>{% endif %}</td>
                   <td><span class="status-chip {{ 'success' if agent.state == 'approved' else ('warning' if agent.state == 'pending' else 'muted') }}">{{ agent.state | capitalize }}</span></td>
                   <td>
                     {% if agent.capabilities %}
