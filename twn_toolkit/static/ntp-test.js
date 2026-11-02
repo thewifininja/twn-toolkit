@@ -11,11 +11,14 @@
     const option = select.selectedOptions[0];
     hosts.value = option?.dataset.values || "";
     name.value = option?.value || "";
-    sessionStorage.setItem(storageKey, select.value);
+    try { sessionStorage.setItem(storageKey, select.value); } catch (_) { /* Selection still works without storage. */ }
   });
 
-  const savedProfile = sessionStorage.getItem(storageKey);
-  if (savedProfile && [...select.options].some((option) => option.value === savedProfile)) {
+  let savedProfile = "";
+  try { savedProfile = sessionStorage.getItem(storageKey) || ""; } catch (_) { /* Use the current form. */ }
+  if (form.dataset.restoreRememberedProfile === "true" && !hosts.value.trim()
+      && !name.value.trim() && !select.value && savedProfile
+      && [...select.options].some((option) => option.value === savedProfile)) {
     select.value = savedProfile;
     select.dispatchEvent(new Event("change"));
   }
@@ -32,7 +35,7 @@
       status.textContent = payload.error || "Profile could not be saved.";
       return;
     }
-    sessionStorage.setItem(storageKey, payload.profile.name);
+    try { sessionStorage.setItem(storageKey, payload.profile.name); } catch (_) { /* Save already succeeded. */ }
     window.location.reload();
   });
 
@@ -47,7 +50,7 @@
       status.textContent = payload.error || "Profile could not be deleted.";
       return;
     }
-    sessionStorage.removeItem(storageKey);
+    try { sessionStorage.removeItem(storageKey); } catch (_) { /* Delete already succeeded. */ }
     window.location.reload();
   });
 })();

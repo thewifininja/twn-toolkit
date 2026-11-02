@@ -34,10 +34,10 @@
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   {{ case_recorded_notice(journal_event) }}
 
-  <form class="compact-tool-form" method="post" id="ntp-form" data-loading-message="Testing NTP servers…" data-save-profile-url="{{ url_for('tools.save_ntp_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_ntp_profile') }}">
+  <form class="compact-tool-form" method="post" id="ntp-form" data-restore-remembered-profile="{{ 'true' if request.method == 'GET' else 'false' }}" data-loading-message="Testing NTP servers…" data-save-profile-url="{{ url_for('tools.save_ntp_profile') }}" data-delete-profile-url="{{ url_for('tools.delete_ntp_profile') }}">
     {% call saved_profile_manager("Server lists", "Load or maintain reusable groups of time servers.", profiles|length, "ntp-profile-manager", compact=true) %}
       <div class="compact-profile-controls">
-        <div class="compact-profile-target"><label class="compact-profile-select">Saved profile<select id="ntp-profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in profiles %}<option value="{{ profile.name }}" data-values="{{ profile['values'] }}">{{ profile.name }} · {{ profile.count }} server{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>{{ list_switch('ntp.hosts') }}</div>
+        <div class="compact-profile-target"><label class="compact-profile-select">Saved profile<select id="ntp-profile" name="host_profile" data-saved-profile-select><option value="">New / unsaved profile</option>{% for profile in profiles %}<option value="{{ profile.name }}" data-values="{{ profile['values'] }}" {% if form.host_profile == profile.name %}selected{% endif %}>{{ profile.name }} · {{ profile.count }} server{{ '' if profile.count == 1 else 's' }}</option>{% endfor %}</select></label>{{ list_switch('ntp.hosts') }}</div>
         <button class="secondary compact-profile-primary" type="button" data-saved-profile-primary>Save current…</button>
         <details class="compact-profile-more" data-saved-profile-more>
           <summary aria-label="More NTP profile actions" title="More profile actions">•••</summary>
@@ -48,7 +48,7 @@
           </div>
         </details>
         <div class="compact-profile-naming" data-saved-profile-naming hidden>
-          <label>Profile name<input id="ntp-profile-name" data-saved-profile-name placeholder="Primary time servers" maxlength="100"></label>
+          <label>Profile name<input id="ntp-profile-name" name="profile_name" value="{{ form.profile_name }}" data-saved-profile-name placeholder="Primary time servers" maxlength="100"></label>
           <button class="profile-save-action" id="ntp-save-profile" data-saved-profile-save type="button">Save profile</button>
           <button class="secondary" type="button" data-saved-profile-cancel>Cancel</button>
         </div>
@@ -170,5 +170,5 @@
 </div>
 </div>
 <script src="{{ url_for('static', filename='tool-results-workspace.js', v=app_version) }}"></script>
-<script src="{{ url_for('static', filename='ntp-test.js') }}"></script>
+<script src="{{ url_for('static', filename='ntp-test.js', v=asset_version) }}"></script>
 {% endblock %}

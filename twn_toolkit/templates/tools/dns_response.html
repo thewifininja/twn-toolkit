@@ -237,13 +237,14 @@
       <thead><tr><th>Query</th><th>Resolver</th><th>Type</th><th>Status</th><th>Answers</th><th>Response</th></tr></thead>
       <tbody>
         {% for result in results %}
+        {% set response_ms = result.response_ms|default(none) %}
         <tr>
           <td>{% if result.host_label %}<strong>{{ result.host_label }}</strong><br>{% endif %}<code>{{ result.host }}</code></td>
           <td>{% if result.server_label %}<strong>{{ result.server_label }}</strong><br>{% endif %}<code>{{ result.server }}</code></td>
           <td>{{ result.record_type }}</td>
           <td><span class="pill {{ 'success' if result.status == 'success' else 'error' }}">{{ result.status }}</span></td>
-          <td>{% if result.answers %}{% for answer in result.answers %}<code class="dns-answer">{{ answer }}</code>{% endfor %}{% else %}<span title="{{ result.error|default('') }}">—</span>{% endif %}</td>
-          <td><strong>{{ result.response_ms }} ms</strong></td>
+          <td>{% if result.answers %}{% for answer in result.answers %}<code class="dns-answer">{{ answer }}</code>{% endfor %}{% elif not result.error %}—{% endif %}{% if result.error %}<p class="field-note dns-answer-error">{{ result.error }}</p>{% endif %}</td>
+          <td><strong>{% if response_ms is not none %}{{ response_ms }} ms{% else %}—{% endif %}</strong></td>
         </tr>
         {% endfor %}
       </tbody>

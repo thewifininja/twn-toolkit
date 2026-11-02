@@ -22568,3 +22568,6 @@ dialog.automation-prerequisite-dialog[open] { display: flex; flex-direction: col
 
 /* A bounded saved-note confirmation must retain lines without widening a dialog. */
 [data-note-saved-preview] { overflow-wrap: anywhere; white-space: pre-wrap; }
+
+/* DNS failure text stays readable without widening the results table. */
+.dns-answer-error { overflow-wrap: anywhere; }

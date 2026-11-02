@@ -53,6 +53,7 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
         results = None
         journal_event = None
         error = ""
+        profile_error = False
         if request.method == "POST":
             operation_id = f"radius:{secrets.token_hex(12)}"
             journal_started_at = time.time()
@@ -74,10 +75,13 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
                 error = EAP_DISABLED_REASON
             elif not form["server_names"] or any(server is None for server in servers):
                 error = "Select at least one valid RADIUS server profile."
+                profile_error = True
             elif not credentials:
                 error = "Select a valid credential profile."
+                profile_error = True
             elif form["attribute_profile"] and not attribute_profile:
                 error = "Select a valid RADIUS attribute profile."
+                profile_error = True
             else:
                 try:
                     results = radius_authenticate(
@@ -170,6 +174,7 @@ def register_radius_routes(tools_bp: Blueprint) -> None:
         return render_template(
             "tools/radius_test.html",
             error=error,
+            profile_error=profile_error,
             form=form,
             servers=server_store.all(),
             credentials=credential_store.all(),

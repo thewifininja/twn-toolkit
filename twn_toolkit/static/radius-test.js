@@ -1,4 +1,11 @@
 (() => {
+  document.querySelectorAll("[data-radius-show-profiles]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const tab = document.getElementById("radius-profiles-tab");
+      tab?.click();
+      tab?.focus();
+    });
+  });
   const status = document.querySelector("#radius-profile-status");
   document.querySelectorAll(".radius-profile-form").forEach((form) => {
     let saving = false;
