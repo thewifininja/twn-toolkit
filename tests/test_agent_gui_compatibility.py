@@ -125,7 +125,7 @@ def test_reported_mismatch_is_distinct_from_missing_report(tmp_path):
     assert not old['gui_compatible'] and selectable_gui_agents([old]) == []
     legacy = heartbeat(store, agent_id)
     assert legacy['gui_compatibility_status'] == 'unconfirmed'
-    assert 'missing protocol information' in legacy['gui_compatibility_error']
+    assert 'missing or invalid protocol information' in legacy['gui_compatibility_error']
 
 
 def test_mainframe_shows_pending_status_then_removes_note_after_compatible_report(tmp_path, monkeypatch):
@@ -145,3 +145,11 @@ def test_mainframe_shows_pending_status_then_removes_note_after_compatible_repor
     assert after.status_code == 200
     assert b'data-agent-compatibility' not in after.data
     assert b'Awaiting heartbeat' not in after.data
+
+
+def test_known_mismatch_is_not_hidden_by_another_missing_protocol(tmp_path):
+    store = DistributedAgentStore(tmp_path); agent_id = enroll(store)
+    report = heartbeat(store, agent_id, job_protocol_version=3, gui_protocol_version=0)
+    assert report['gui_compatibility_status'] == 'mismatch'
+    assert 'job protocol 3 and GUI protocol not reported/invalid' in report['gui_compatibility_error']
+    assert not report['gui_compatible'] and selectable_gui_agents([report]) == []

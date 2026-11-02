@@ -586,7 +586,9 @@ def agent_gui_compatibility_status(agent):
             and not job and not gui
             and float(agent.get("last_seen_at") or 0) <= float(agent.get("approved_at") or 0)):
         return "awaiting_report"
-    return "unconfirmed" if not job or not gui else "mismatch"
+    if job not in (0, JOB_PROTOCOL_VERSION) or gui not in (0, GUI_PROTOCOL_VERSION):
+        return "mismatch"
+    return "unconfirmed"
 
 
 def agent_gui_compatibility_error(agent):
@@ -600,11 +602,11 @@ def agent_gui_compatibility_error(agent):
                 "No version mismatch has been established.")
     required = f"Mainframe requires job protocol {JOB_PROTOCOL_VERSION} and GUI protocol {GUI_PROTOCOL_VERSION}. "
     if status == "unconfirmed":
-        reason = "GUI compatibility is unconfirmed: the Agent's latest report is missing protocol information. "
+        reason = "GUI compatibility is unconfirmed: the Agent's latest report has missing or invalid protocol information. "
     else:
         reason = ("GUI compatibility has a protocol mismatch: the Agent reported job protocol "
-                  f"{_protocol_number(agent.get('job_protocol_version'))} and GUI protocol "
-                  f"{_protocol_number(agent.get('gui_protocol_version'))}. ")
+                  f"{_protocol_number(agent.get('job_protocol_version')) or 'not reported/invalid'} and GUI protocol "
+                  f"{_protocol_number(agent.get('gui_protocol_version')) or 'not reported/invalid'}. ")
     return (reason + required + "Check the running Mainframe and Agent builds and restart outdated "
             "web and automation/distributed workers, then wait for a new Agent status report. "
             "Re-enrollment does not fix a protocol mismatch. This check does not diagnose "
