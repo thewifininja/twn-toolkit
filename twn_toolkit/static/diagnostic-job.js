@@ -43,7 +43,7 @@
     resultLink.textContent = "View retained result in new tab";
   };
   const reportRetainedCompletion = (job) => {
-    const outcome = job.state === "unknown" ? "Run outcome is unconfirmed." : `Run ${stateLabels[job.state]?.toLowerCase() || "finished"}.`;
+    const outcome = job.display_label ? `${job.display_label}. ${job.display_message || ""}`.trim() : job.state === "unknown" ? "Run outcome is unconfirmed." : `Run ${stateLabels[job.state]?.toLowerCase() || "finished"}.`;
     status.textContent = navigationSubmission && !navigationSubmission.defaultPrevented
       ? `${outcome} Waiting for the new request's response. You can inspect this earlier run in a new tab.`
       : `${outcome} Your settings are still here. Open the retained result in a new tab to inspect this run.`;
@@ -101,13 +101,13 @@
       if (stopped) return;
       if (typeof job.state !== "string") throw new Error("Invalid run status");
       paused = false;
+      const state = panel.querySelector("[data-diagnostic-state]");
+      if (state) state.textContent = job.display_label || stateLabels[job.state] || job.state.replaceAll("_", " ");
       if (!activeStates.includes(job.state)) {
         finished = true;
         terminalJob = job;
         if (cancelButton) cancelButton.disabled = true;
         if (cancelNotice) showCancelNotice(job.state === "cancelled" ? "Run cancelled." : "Run finished. Inspect the retained result for its final state.");
-        const state = panel.querySelector("[data-diagnostic-state]");
-        if (state) state.textContent = stateLabels[job.state] || job.state.replaceAll("_", " ");
         if (hasDraft()) {
           reportRetainedCompletion(job);
         } else {
@@ -117,9 +117,9 @@
         return;
       }
       if (cancelButton) cancelButton.disabled = cancelPending || job.state === "cancel_requested";
-      status.textContent = job.state === "cancel_requested" ? "Cancellation requested — waiting for the run to stop. Your new settings remain on this page." :
+      status.textContent = job.display_message || (job.state === "cancel_requested" ? "Cancellation requested — waiting for the run to stop. Your new settings remain on this page." :
         job.state === "running" ? (job.stage ? `Run in progress: ${job.stage}. You can leave this page.` : "Run in progress. You can leave this page and return to the result link.") :
-        "Queued — waiting for the diagnostic scheduler. You can leave this page.";
+        "Queued — waiting for the diagnostic scheduler. You can leave this page.");
     } catch (error) {
       if (stopped) return;
       paused = [401, 403, 404, 410].includes(error.status);

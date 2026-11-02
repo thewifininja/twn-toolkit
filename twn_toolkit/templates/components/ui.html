@@ -135,10 +135,10 @@
 One hostname, IP address, or inclusive IP range per line. Optional names use <code>Name = target</code>; named ranges become <code>Name-0001</code>, <code>Name-0002</code>, and so on. Maximum {{ limit }} {{ noun }} after expansion.
 {%- endmacro %}
 
-{% macro tool_result_runbar(label, title, summary, form_id, settings_id, has_results, rerun_label='Run again', class_name='') -%}
+{% macro tool_result_runbar(label, title, summary, form_id, settings_id, has_results, rerun_label='Run again', class_name='', indicator='complete', settings_label='Edit settings') -%}
 <section class="tool-runbar{% if class_name %} {{ class_name }}{% endif %}" data-tool-runbar {% if not has_results %}hidden{% endif %} aria-label="{{ title }} result controls">
   <div class="tool-runbar-state">
-    <span class="tool-runbar-indicator complete" aria-hidden="true"></span>
+    <span class="tool-runbar-indicator {{ indicator }}" aria-hidden="true"></span>
     <div>
       <span class="eyebrow">{{ label }}</span>
       <strong>{{ title }}</strong>
@@ -147,7 +147,7 @@ One hostname, IP address, or inclusive IP range per line. Optional names use <co
   </div>
   <div class="tool-runbar-actions">
     {% if rerun_label %}<button type="submit" form="{{ form_id }}">{{ rerun_label }}</button>{% endif %}
-    <button class="secondary" type="button" data-tool-settings-open aria-controls="{{ settings_id }}" aria-expanded="false">Edit settings</button>
+    <button class="secondary" type="button" data-tool-settings-open aria-controls="{{ settings_id }}" aria-expanded="false">{{ settings_label }}</button>
   </div>
 </section>
 {%- endmacro %}

@@ -17,11 +17,11 @@
 <section class="panel"><a class="button-link" href="{{ url_for('tools.download_transfer_job', job_id=diagnostic_job.id) }}">Download ZIP</a><p class="field-note">Available while this run is retained, up to {{ transfer_limits.diagnostic_retention_hours }} hours. Agent GUI downloads remain subject to the configured response-size limit; use the Agent directly for larger archives.</p></section>
 {% endif %}
 {% set has_results = results is not none %}
-{% set success_count = diagnostic_job.summary.successful if has_results and diagnostic_job else 0 %}
-{% set run_total = diagnostic_job.summary.total if has_results and diagnostic_job else 0 %}
+
 <div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
-{{ tool_result_runbar('Transfer complete', 'Bulk transfer', (success_count ~ ' of ' ~ run_total ~ ' transfer(s) completed') if has_results else '', 'bulk-transfer-form', 'bulk-transfer-settings', has_results, 'Fetch again') }}
+{{ tool_result_runbar(transfer_view.label if transfer_view else '', 'Bulk transfer', transfer_view.message if transfer_view else '', 'bulk-transfer-form', 'bulk-transfer-settings', has_results, '', indicator='complete' if transfer_view and transfer_view.outcome == 'succeeded' else 'stopped', settings_label='Review another fetch') }}
 {{ case_recorded_notice(journal_event) }}
+{% if transfer_view and transfer_view.retry_advice %}<p class="message warning" data-transfer-retry-advice>{{ transfer_view.retry_advice }}</p>{% endif %}
 <section class="panel tool-panel tool-setup-panel" id="bulk-transfer-settings" data-tool-settings-panel>
   <div class="panel-head tool-setup-heading">
     <div><p class="eyebrow">Network tools</p><p>Fetch the same file set from multiple hosts using SFTP, SCP, or FTP, then retain it in the datastore or download a retained ZIP.</p></div>
@@ -110,7 +110,7 @@
       </section>
     </div>
     <div class="compact-tool-runbar bulk-transfer-runbar">
-      <div><strong>Ready to fetch</strong><span>{{ transfer_limits.transfer_file_mib }} MiB per file · {{ transfer_limits.transfer_run_mib }} MiB per run · credentials are encrypted with this retained job</span></div>
+      <div><strong>Review transfer settings</strong><span>{{ transfer_limits.transfer_file_mib }} MiB per file · {{ transfer_limits.transfer_run_mib }} MiB per run · credentials are encrypted when the run is queued</span></div>
       <button type="submit">Queue transfer</button>
     </div>
   </form>
@@ -121,7 +121,7 @@
 {% if results is not none %}
 <section class="panel tool-panel">
   <div class="preview-head">
-    <div><h2>{{ form.protocol|upper }} Results</h2><p>{{ results | selectattr('status', 'equalto', 'success') | list | length }} of {{ results | length }} transfer(s) {{ 'stored' if form.output_mode == 'datastore' else 'fetched' }} on this page.</p></div>
+    <div><h2>{{ form.protocol|upper }} Results · {{ transfer_view.label }}</h2><p>{{ transfer_view.message }}</p><p>{{ results | selectattr('status', 'equalto', 'success') | list | length }} of {{ results | length }} transfer(s) {{ 'stored' if form.output_mode == 'datastore' else 'fetched' }} on this page.</p></div>
     {% if form.output_mode == 'datastore' %}<a class="button-link secondary" href="{{ url_for('local_datastore', path=form.destination) }}">Open destination</a>{% endif %}
   </div>
   {% if result_total > 100 %}<nav aria-label="Transfer result pages"><span>{{ result_total }} results · page {{ result_page }}</span>{% if result_page > 1 %} <a href="{{ url_for('tools.multi_transfer', job=diagnostic_job.id, page=result_page-1) }}">Previous page</a>{% endif %}{% if result_page * 100 < result_total %} <a href="{{ url_for('tools.multi_transfer', job=diagnostic_job.id, page=result_page+1) }}">Next page</a>{% endif %}</nav>{% endif %}

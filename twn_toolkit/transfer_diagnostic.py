@@ -12,6 +12,7 @@ from .datastore import LocalDatastore, DatastoreError
 from .network_tools import ToolInputError, parse_ssh_targets
 from .transfer_tools import fetch_transfer_files, parse_remote_paths, validate_transfer_filename_pattern
 from .transfer_deadlines import TransferPolicy
+from .transfer_outcomes import completed_transfer_outcome
 
 
 def prepare_transfer_config(form, password):
@@ -114,7 +115,7 @@ def record_transfer_outcome(store, job, state, error, *, config=None, rows=None,
                    'successful transfer count': len(successes),
                    'transferred byte count': sum(int(row['size']) for row in successes),
                    'legacy SSH compatibility': bool(form['allow_legacy_algorithms']) if form['protocol'] != 'ftp' else False}
-        outcome = ('succeeded' if len(successes) == len(rows) and successes else 'incomplete' if successes else 'failed') if state == 'succeeded' else state
+        outcome = completed_transfer_outcome(len(successes), len(rows)) if state == 'succeeded' else state
         try:
             AuditStore(str(store.instance)).record(**identity, method='WORKER', endpoint='tools.multi_transfer',
                 path='/tools/multi-transfer', status_code=200, category='Network tools',
