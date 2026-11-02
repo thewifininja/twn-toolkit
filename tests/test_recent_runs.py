@@ -23,7 +23,7 @@ def test_history_is_compact_escaped_sorted_and_scoped_to_agent_url(app):
     assert '<script>bad' not in page
     assert 'Unconfirmed' in page and 'pill warning' in page
     assert 'href="/agents/fixture/newer"' in page
-    assert 'aria-label="View Preview · Branch · Today"' in page
+    assert 'aria-label="View result for Preview · Branch · Today"' in page
 
 
 def test_diagnostic_links_use_existing_scoped_route_and_toolkit_timezone(app):

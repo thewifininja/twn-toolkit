@@ -2,7 +2,7 @@
 .run-page-heading { margin: 0 0 12px; }
 .run-page-heading h1 { margin: 0; font-size: 1.65rem; }
 details.recent-runs { padding: 0; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); box-shadow: none; overflow: hidden; }
-.recent-runs > summary { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 8px 14px; box-sizing: border-box; cursor: pointer; list-style: none; }
+.recent-runs > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 44px; padding: 8px 14px; box-sizing: border-box; cursor: pointer; list-style: none; }
 .recent-runs > summary::-webkit-details-marker { display: none; }
 .recent-runs > summary::marker { content: ''; }
 .recent-runs > summary:hover { background: color-mix(in srgb, var(--accent) 5%, var(--panel)); }

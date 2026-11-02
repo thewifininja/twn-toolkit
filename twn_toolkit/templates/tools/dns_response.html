@@ -9,7 +9,7 @@
 {% set diagnostic_result_endpoint = 'tools.dns_response' %}
 <header class="run-page-heading"><h1>DNS Tester</h1></header>
 {% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
-{% include 'components/diagnostic_job.html' %}
+{% with diagnostic_draft_form='dns-form' %}{% include 'components/diagnostic_job.html' %}{% endwith %}
 {% set dns_has_results = results is not none or load_result is not none %}
 <div class="tool-workspace dns-tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if dns_has_results else 'setup' }}">
 <section class="tool-runbar" data-tool-runbar {% if not dns_has_results %}hidden{% endif %} aria-label="DNS result controls">
@@ -60,7 +60,7 @@
   <form
     class="dns-workspace-form"
     method="post"
-    id="dns-form"
+    id="dns-form" data-unsaved-form
     data-dns-max-load-queries="{{ load_limits.queries }}"
     data-dns-max-load-servers="{{ load_limits.servers }}"
     data-loading-message="{{ 'Queueing controlled DNS load test…' if form.mode == 'load' else 'Queueing DNS comparison…' }}"
@@ -302,4 +302,5 @@
 <script src="{{ url_for('static', filename='diagnostic-job.js', v=app_version) }}"></script>
 <script src="{{ url_for('static', filename='tool-results-workspace.js', v=app_version) }}"></script>
 <script src="{{ url_for('static', filename='dns-response.js', v=app_version) }}"></script>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=app_version) }}"></script>
 {% endblock %}
