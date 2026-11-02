@@ -22533,3 +22533,12 @@ details.multi-ssh-exact-plan.multi-ssh-workspace-card > summary {
 details.multi-ssh-exact-plan.multi-ssh-workspace-card[open] > :not(summary) {
   margin: 0 12px 12px;
 }
+
+/* Recovery keeps its text action discoverable without squeezing host identity. */
+@media (max-width: 900px) {
+  .remote-terminal-session-card.with-recovery { grid-template-columns: minmax(0, 1fr); }
+  .remote-terminal-session-card.with-recovery .remote-terminal-session-card-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}

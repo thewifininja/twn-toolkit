@@ -93,6 +93,15 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         user = _current_user()
         return jsonify({"library": _connection_library(user["id"])})
 
+    @tools_bp.get("/remote-terminal/sessions")
+    def remote_terminal_sessions():
+        """Refresh retained state without starting or reconnecting any shell."""
+        suppress_audit_event()
+        sessions = _manager().sessions_for_user(_current_user()["id"], include_finished=True)
+        response = jsonify({"sessions": [_public_session(item) for item in sessions]})
+        response.headers["Cache-Control"] = "no-store"
+        return response
+
     @tools_bp.get("/remote-terminal/devices")
     def remote_terminal_devices():
         suppress_audit_event()
