@@ -34,17 +34,18 @@
     </section>
   {% endif %}
 
-  {% if not open_investigation %}
-    <details class="panel investigation-create-panel" {% if not investigations %}open{% endif %}><summary>Start a new case</summary>
+  {% if not open_investigation or case_error %}
+    <details class="panel investigation-create-panel" {% if not investigations or case_error %}open{% endif %}><summary>Start a new case</summary>
       {{ section_header("Start a case", "Give the work a durable name before running the first diagnostic.", "New case") }}
-      <form method="post" action="{{ url_for('create_investigation') }}" class="form-grid investigation-create-form">
+      {% if case_error %}<p class="message error" role="alert">{{ case_error }} Your title and starting context are kept below.</p>{% if open_investigation and not open_investigation.can_manage_case %}<p class="field-note">You are a collaborator on the current case; its owner controls closing it. Your new-case draft remains below.</p>{% endif %}{% endif %}
+      <form data-unsaved-form data-unsaved-initial="{{ 'true' if case_error else 'false' }}" method="post" action="{{ url_for('create_investigation') }}" class="form-grid investigation-create-form">
         <div class="investigation-create-fields">
           <label class="investigation-create-title">Case title
-            <input name="title" maxlength="120" required placeholder="Branch office intermittent outage">
+            <input name="title" value="{{ case_form.get('title', '') }}" maxlength="120" required placeholder="Branch office intermittent outage">
           </label>
           <label>Starting context
             <small>Capture what is affected, when it began, and anything already known.</small>
-            <textarea name="description" rows="5" maxlength="2000" placeholder="Users at the branch report intermittent access after the firewall change…"></textarea>
+            <textarea name="description" rows="5" maxlength="2000" placeholder="Users at the branch report intermittent access after the firewall change…">{{ case_form.get('description', '') }}</textarea>
           </label>
         </div>
         <footer class="investigation-create-actions">
@@ -106,4 +107,5 @@
 
 
 </div>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
 {% endblock %}

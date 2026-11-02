@@ -8,6 +8,7 @@ from flask import (
     abort,
     flash,
     g,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -81,7 +82,7 @@ def register_investigation_routes(
         ]
 
     def render_workspace(
-        investigation_id: str, *, active_tab: str
+        investigation_id: str, *, active_tab: str, note_text: str = "", note_error: str = ""
     ) -> str:
         journal_pagination = None
         evidence_pagination = None
@@ -102,6 +103,7 @@ def register_investigation_routes(
                         user_id(),
                         before_event_id=request.args.get("before_event", ""),
                         after_event_id=request.args.get("after_event", ""),
+                        include_event_id=request.args.get("include_event", ""),
                     )
                 except InvestigationError:
                     abort(404)
@@ -169,6 +171,8 @@ def register_investigation_routes(
             **report,
             investigation_tabs=tabs(investigation_id, active_tab),
             active_investigation_tab=active_tab,
+            note_text=note_text,
+            note_error=note_error,
             investigation_participants=participants,
             collaborator_candidates=collaborator_candidates,
             merge_destinations=merge_destinations,
@@ -251,16 +255,21 @@ def register_investigation_routes(
             {**case_report_contents(events, artifacts), "report_pagination": pagination},
         )
 
-    @app.get("/investigations")
-    def investigations():
+    def render_index(*, case_form=None, case_error=""):
         investigations = store.list_for_user(user_id())
         return render_template(
             "investigations/index.html",
             investigations=investigations,
+            case_form=case_form or {},
+            case_error=case_error,
             open_investigation=next(
                 (item for item in investigations if item["is_open"]), None
             ),
         )
+
+    @app.get("/investigations")
+    def investigations():
+        return render_index()
 
     @app.post("/investigations")
     def create_investigation():
@@ -272,8 +281,7 @@ def register_investigation_routes(
                 description=request.form.get("description", ""),
             )
         except InvestigationError as exc:
-            flash(str(exc), "error")
-            return redirect(url_for("investigations"))
+            return render_index(case_form=request.form, case_error=str(exc)), 400
         annotate_audit_event(
             category="Investigations",
             action="investigation.created",
@@ -432,15 +440,27 @@ def register_investigation_routes(
     @app.post("/investigations/<investigation_id>/notes")
     def add_investigation_note(investigation_id: str):
         investigation = investigation_or_404(investigation_id)
+        json_mode = (
+            request.form.get("response_mode") == "journal"
+            and request.accept_mimetypes.best == "application/json"
+        )
         try:
-            store.add_note(
+            event = store.add_note(
                 investigation_id,
                 user_id(),
                 str(user().get("username", "")),
                 request.form.get("note", ""),
             )
         except InvestigationError as exc:
-            flash(str(exc), "error")
+            if json_mode:
+                response = jsonify(error=str(exc))
+                response.status_code = 400
+                response.headers["Cache-Control"] = "no-store"
+                return response
+            return render_workspace(
+                investigation_id, active_tab="journal",
+                note_text=request.form.get("note", ""), note_error=str(exc),
+            ), 400
         else:
             annotate_audit_event(
                 category="Investigations",
@@ -450,6 +470,18 @@ def register_investigation_routes(
                 resource_id=investigation_id,
                 resource_name=str(investigation["title"]),
             )
+            if json_mode:
+                response = jsonify(event={
+                    "id": str(event["id"]),
+                    "summary": event["summary"],
+                    "href": url_for(
+                        "investigation_detail", investigation_id=investigation_id,
+                        include_event=event["id"], _anchor=f"event-{event['id']}",
+                    ),
+                })
+                response.status_code = 201
+                response.headers["Cache-Control"] = "no-store"
+                return response
             flash("Added the note to the case journal.", "success")
         return redirect(
             _safe_next(

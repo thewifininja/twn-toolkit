@@ -2,6 +2,12 @@
   // Opt-in native and acknowledged asynchronous editors. Values stay in this page's memory; no drafts
   // or credentials are written to browser storage or sent to another endpoint.
   const forms = Array.from(document.querySelectorAll("form[data-unsaved-form]"));
+  // A later opt-in surface (for example the shell quick-note dialog) may be
+  // parsed after an editor loaded this script. Never replace prior baselines.
+  if (window.TwnUnsavedForms) {
+    forms.forEach((form) => window.TwnUnsavedForms.register(form));
+    return;
+  }
   if (!forms.length) return;
   const signature = (form) => JSON.stringify(Array.from(form.elements)
     .filter((field) => field.matches("input, select, textarea") && !field.hasAttribute("data-unsaved-ignore")
@@ -18,6 +24,12 @@
   // Capture before issuing a save. Acknowledge that exact snapshot only after
   // success: edits made while the request is pending must remain dirty.
   window.TwnUnsavedForms = Object.freeze({
+    register: (form) => {
+      if (baselines.has(form)) return false;
+      forms.push(form);
+      baselines.set(form, signature(form));
+      return true;
+    },
     capture: (form) => {
       if (!baselines.has(form)) return undefined;
       pendingSaves.add(form);
