@@ -198,22 +198,27 @@ class DiagnosticJobStore:
         job["summary"] = json.loads(self.cipher.open(job["summary"], job_id + ":diagnostic-summary"))
         return job
 
-    def recent(self, user_id, tool="tcp_scan"):
+    def recent(self, user_id, tool="tcp_scan", *, include_summary=False):
+        columns = "id,state,created,summary" if include_summary else "id,state,created"
         with self.connect() as db:
-            # Keep unfinished work reachable even after newer runs finish. The
-            # validated per-user active maximum bounds this projection; never
-            # load encrypted configurations merely to build navigation history.
-            rows = db.execute("""WITH active AS (
-                SELECT id,state,created FROM diagnostic_jobs
+            # Preserve continuity's single active/terminal SQL snapshot.
+            rows = [dict(row) for row in db.execute(f"""WITH active AS (
+                SELECT {columns} FROM diagnostic_jobs
                 WHERE user_id=? AND tool=? AND state IN ('queued','running','cancel_requested')
                 ORDER BY created DESC LIMIT ?
             ), terminal AS (
-                SELECT id,state,created FROM diagnostic_jobs
+                SELECT {columns} FROM diagnostic_jobs
                 WHERE user_id=? AND tool=? AND state NOT IN ('queued','running','cancel_requested')
                 ORDER BY created DESC LIMIT 10
             ) SELECT * FROM active UNION ALL SELECT * FROM terminal ORDER BY created DESC""",
-                (user_id, tool, DIAGNOSTIC_LIMITS['diagnostic_user_limit'][2], user_id, tool))
-            return [dict(row) for row in rows]
+                (user_id, tool, DIAGNOSTIC_LIMITS['diagnostic_user_limit'][2], user_id, tool))]
+        if include_summary:
+            for row in rows:
+                try:
+                    row["summary"] = json.loads(self.cipher.open(row["summary"], row["id"] + ":diagnostic-summary"))
+                except (ValueError, TypeError):
+                    row["summary"] = {}
+        return rows
 
     def cancel(self, job_id, user_id):
         with self.connect(write=True) as db:
