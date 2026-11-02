@@ -25,6 +25,10 @@
     if (!validChoices(catalogue)) throw new Error("The saved choices could not be read. Your draft is unchanged.");
     choices = catalogue;
     builders.forEach((form) => {
+      // Catalogue-only controls must not dirty untouched editors. Preserve every
+      // existing draft/pending save, and the created target's new selection.
+      const guard = window.TwnUnsavedForms;
+      const rebaseCatalogueOnly = guard && !guard.hasChanges(form) && !(form === target && created);
       const selected = new Set([...form.querySelectorAll('[name="condition_definition_id"]:checked')].map((item) => item.value).filter(Boolean));
       if (form === target && created?.kind === "condition" && selected.size < 10) selected.add(created.id);
       const conditionList = form.querySelector("[data-builder-condition-choices]");
@@ -48,6 +52,7 @@
       form.querySelector("[data-builder-empty-schedules]").hidden = choices.schedules.length > 0;
       form.dispatchEvent(new CustomEvent("automation:choices", {detail:{actions:choices.actions, useId:form === target && created?.kind === "action" ? created.id : null, stageId}}));
       readiness(form);
+      if (rebaseCatalogueOnly) guard.reset(form);
     });
   };
   builders.forEach((form) => {
