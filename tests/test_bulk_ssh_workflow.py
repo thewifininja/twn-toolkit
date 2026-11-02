@@ -55,7 +55,7 @@ def test_save_add_preserves_order_rename_and_requires_new_review(workspace):
     ):
         response = client.post('/tools/multi-ssh', data=data)
     assert response.status_code == 200
-    assert context['active_workspace'] == 'run'
+    assert context['active_workspace'] == 'actions'
     assert [a['name'] for a in context['selected_run_actions']] == ['Second', 'Renamed']
     assert not context['preview_token']
     assert context['results'] is None

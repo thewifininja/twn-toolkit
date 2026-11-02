@@ -45,8 +45,8 @@ def test_automatic_review_never_connects_admits_or_retains_credentials(review):
     enqueue.assert_not_called()
     connect.assert_not_called()
     assert 'must-not-render' not in payload['html']
-    assert 'first.test' in payload['html'] and 'second.test' in payload['html']
-    assert re.search(r'<input\b[^>]*\schecked(?:\s|=|>)', payload['html']) is None
+    assert 'first.test' in payload['connection_html'] and 'second.test' in payload['connection_html']
+    assert re.search(r'<input\b[^>]*\schecked(?:\s|=|>)', payload['connection_html']) is None
     assert DiagnosticJobStore(app.instance_path).recent('test-user', 'bulk_ssh') == []
 
 
@@ -177,3 +177,35 @@ def test_direct_legacy_port_refresh_requires_explicit_admission(review):
     assert response.status_code == 202
     config = store.get(response.json['job_id'], 'test-user')['config']
     assert config['port'] == 2222 and config['host_options'] is None
+
+
+def test_mixed_run_composition_admission_and_stale_edit(review):
+    import json
+    app, client, form = review
+    steps = [{'source': 'inline', 'id': 'first', 'name': 'Typed first', 'commands': 'show clock', 'command_timeout': 10},
+             {'source': 'saved', 'name': 'Status'},
+             {'source': 'inline', 'id': 'last', 'name': 'Typed last', 'commands': 'show {{ site }} detail', 'command_timeout': 20}]
+    form = {**form, 'run_steps': json.dumps(steps)}
+    payload = prepare(client, form)
+    assert payload['html'].index('Typed first') < payload['html'].index('Status') < payload['html'].index('Typed last')
+    changed = [dict(step) for step in steps]
+    changed[0]['commands'] = 'show changed'
+    assert run(client, form, payload['token'], run_steps=json.dumps(changed)).status_code == 400
+    response = run(client, form, payload['token'])
+    assert response.status_code == 202
+    config = DiagnosticJobStore(app.instance_path).get(response.json['job_id'], 'test-user')['config']
+    plans = jobs.plans_for(config)
+    assert len(plans) == 2
+    rendered = repr(plans[0])
+    assert rendered.index('show clock') < rendered.index('show A') < rendered.index('show A detail')
+    assert len(SSHHostMatrixStore(app.instance_path).get('Lab')['actions']) == 1
+
+
+def test_same_matrix_save_preserves_unadded_typed_draft(review):
+    app, client, form = review
+    response = client.post('/tools/multi-ssh', data={**form, 'action': 'save_matrix_action',
+        'matrix_action_name': 'New saved', 'commands': 'show version',
+        'inline_draft_commands': 'show unadded', 'inline_draft_timeout': '15'})
+    assert response.status_code == 200
+    assert b'show unadded</textarea>' in response.data
+    assert b'value="15" form="multi-ssh-run-form" data-ssh-inline-draft-timeout' in response.data
