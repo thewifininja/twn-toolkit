@@ -66,7 +66,8 @@ def test_native_post_redirect_receipt_refresh_never_sends(isolated):
     for _ in range(2):
         receipt = client.get(response.location)
         assert receipt.status_code == 200
-        assert b'contents were not saved' in receipt.data
+        assert b'local API receipt stores metadata' in receipt.data
+        assert b'Agent execution can retain contents' in receipt.data
     assert sender.call_count == 1
 
 def test_uncertain_failure_redacts_exception_and_never_replays(isolated):
@@ -182,3 +183,32 @@ def test_revoked_tool_grant_hides_owned_receipt_and_blocks_replay(isolated):
     assert client.get('/tools/api-request/admission').status_code == 403
     assert send(client, values).status_code == 403
     assert sender.call_count == 1
+
+
+def test_privacy_copy_distinguishes_local_receipts_from_agent_transport(isolated):
+    client, sender, _ = isolated
+    page = client.get('/tools/api-request')
+    assert b'Local API receipts store metadata only' in page.data
+    assert b'Agent execution can retain request and response contents' in page.data
+    assert b'are never saved' not in page.data
+    sender.assert_not_called()
+
+
+def test_active_case_decrypted_journal_excludes_request_and_untrusted_metadata(isolated):
+    import json
+    from twn_toolkit.investigations import InvestigationStore
+    client, sender, path = isolated
+    store = InvestigationStore(str(path))
+    case = store.create(owner_user_id='test-user', owner_username='test-user', title='Synthetic API case')
+    send(client, compose(client))
+    for field in ['method', 'timeout']:
+        send(client, compose(client, **{field: 'PrivateInvalidMetadataFixture'}))
+    sender.side_effect = RuntimeError('PrivateExceptionFixture PrivateQuery')
+    send(client, compose(client))
+    events = store.events_for_user(case['id'], 'test-user')
+    assert len(events) >= 5
+    content = json.dumps(events)
+    for marker in ['PrivateHeaderFixture', 'PrivateBodyFixture', 'PrivateResponseFixture',
+                   'PrivateRemoteReasonFixture', 'PrivateInvalidMetadataFixture',
+                   'PrivateExceptionFixture', 'PrivatePath', 'PrivateQuery', 'PrivateRequestEchoFixture']:
+        assert marker not in content

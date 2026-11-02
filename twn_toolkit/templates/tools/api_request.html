@@ -14,7 +14,7 @@
   <div class="message" role="status">
     {% if receipt.state == 'confirmed' %}A response was confirmed{% if receipt.status is not none %}: HTTP {{ receipt.status }}{% endif %}.
     {% else %}The previous send has no confirmed response here. It may already have executed; reconcile the remote operation before sending again.{% endif %}
-    This receipt never sends a request. Request headers/body and response contents were not saved and are unavailable after leaving their original page.
+    This receipt never sends a request. The local API receipt stores metadata, not request or response contents; those contents are unavailable from this receipt. Agent execution can retain contents under the existing transport retention.
   </div>
   {% endif %}
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
@@ -40,9 +40,9 @@
     </label>
     <label class="check"><input name="verify_tls" type="checkbox" {{ 'checked' if form.verify_tls else '' }}>Verify TLS certificate</label>
     <label class="check" data-api-consent><input type="checkbox" name="write_consent" value="yes" data-unsaved-ignore>I intend to send this write request. It may change the remote service; a timeout does not undo it.</label>
-    <div class="button-row"><button type="submit">Send request once</button><button type="button" class="secondary" data-api-new-admission hidden>Prepare another send</button><button type="button" class="secondary" data-api-view-result hidden>View previous response</button></div>
+    <div class="button-row"><button type="submit">Send request once</button><button type="button" class="secondary" data-api-new-admission hidden>Prepare another send</button><button type="button" class="secondary" data-api-view-result hidden>View previous response</button><a class="button-link secondary" data-api-receipt target="_blank" rel="noopener" hidden>View send receipt</a></div>
     <p class="tool-status" role="status" data-api-status>{% if not admission_token %}Send preparation is busy. Your draft stays here; prepare another send when capacity is available.{% endif %}</p>
-    <span class="field-note">The timeout includes startup, DNS, connection, and response transfer. A timed-out remote operation may still have executed. Redirects are reported but not followed. Response bodies are limited to 1 MiB and are never saved.</span>
+    <span class="field-note">The timeout includes startup, DNS, connection, and response transfer. A timed-out remote operation may still have executed. Redirects are reported but not followed. Response bodies are limited to 1 MiB. Local API receipts store metadata only; Agent execution can retain request and response contents under the existing transport retention.</span>
   </form>
 </section>
 {{ tool_settings_backdrop('API request') }}

@@ -86,7 +86,7 @@ def test_actual_fixture_response_and_retained_truth(browser_fixture, mode, statu
         assert retry.status_code == 409 and retry.json["dispatched"] is False
         assert sender.call_count == state["counts"]["synthetic_sender_calls"] == 1
         page = client.get("/tools/api-request", query_string={"receipt": values["admission_token"]})
-        assert page.status_code == 200 and b"contents were not saved" in page.data
+        assert page.status_code == 200 and b"local API receipt stores metadata" in page.data and b"Agent execution can retain contents" in page.data
         assert b"<script>synthetic text</script>" not in page.data
         assert sender.call_count == 1
 

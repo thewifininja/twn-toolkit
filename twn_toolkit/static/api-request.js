@@ -9,6 +9,9 @@
   const consentRow = form.querySelector('[data-api-consent]');
   const refresh = form.querySelector('[data-api-new-admission]');
   const viewResult = form.querySelector('[data-api-view-result]');
+  const receiptLink = form.querySelector('[data-api-receipt]');
+  receiptLink.target = '_blank';
+  receiptLink.rel = 'noopener';
   viewResult.addEventListener('click', () => window.TwnToolWorkspace?.forElement(workspace)?.setState('results', {focusResults: true}));
   const composition = data => JSON.stringify(['method', 'url', 'headers', 'body', 'timeout', 'verify_tls'].map(name => [name, data.get(name)]));
   let pending = false;
@@ -106,6 +109,8 @@
       const receiptURL = new URL(form.action, window.location.href);
       receiptURL.search = '';
       receiptURL.searchParams.set('receipt', submittedToken);
+      receiptLink.href = receiptURL.href;
+      receiptLink.hidden = false;
       window.history.replaceState(null, '', receiptURL.href);
       response = await fetch(form.action, {method: 'POST', body, headers: {Accept: 'application/json'}, signal: controller.signal});
       if (response.redirected || !response.headers.get('content-type')?.includes('application/json')) throw Error();
