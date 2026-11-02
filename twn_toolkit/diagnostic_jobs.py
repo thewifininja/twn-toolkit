@@ -203,10 +203,17 @@ class DiagnosticJobStore:
             # Keep unfinished work reachable even after newer runs finish. The
             # validated per-user active maximum bounds this projection; never
             # load encrypted configurations merely to build navigation history.
-            active = list(db.execute("SELECT id,state,created FROM diagnostic_jobs WHERE user_id=? AND tool=? AND state IN ('queued','running','cancel_requested') ORDER BY created DESC LIMIT ?",
-                                     (user_id, tool, DIAGNOSTIC_LIMITS['diagnostic_user_limit'][2])))
-            terminal = list(db.execute("SELECT id,state,created FROM diagnostic_jobs WHERE user_id=? AND tool=? AND state NOT IN ('queued','running','cancel_requested') ORDER BY created DESC LIMIT 10", (user_id, tool)))
-            return [dict(row) for row in sorted([*active, *terminal], key=lambda row: row['created'], reverse=True)]
+            rows = db.execute("""WITH active AS (
+                SELECT id,state,created FROM diagnostic_jobs
+                WHERE user_id=? AND tool=? AND state IN ('queued','running','cancel_requested')
+                ORDER BY created DESC LIMIT ?
+            ), terminal AS (
+                SELECT id,state,created FROM diagnostic_jobs
+                WHERE user_id=? AND tool=? AND state NOT IN ('queued','running','cancel_requested')
+                ORDER BY created DESC LIMIT 10
+            ) SELECT * FROM active UNION ALL SELECT * FROM terminal ORDER BY created DESC""",
+                (user_id, tool, DIAGNOSTIC_LIMITS['diagnostic_user_limit'][2], user_id, tool))
+            return [dict(row) for row in rows]
 
     def cancel(self, job_id, user_id):
         with self.connect(write=True) as db:
