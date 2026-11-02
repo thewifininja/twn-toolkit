@@ -547,6 +547,7 @@ def register_tools(registry: Any) -> None:
             "tools.delete_ssh_host_matrix": "tools.multi_ssh",
             "tools.remote_terminal": "tools.remote_terminal",
             "tools.remote_terminal_library": "tools.remote_terminal",
+            "tools.remote_terminal_sessions": "tools.remote_terminal",
             "tools.remote_terminal_devices": "tools.remote_terminal",
             "tools.remote_terminal_popout": "tools.remote_terminal",
             "tools.start_remote_terminal_session": "tools.remote_terminal",
