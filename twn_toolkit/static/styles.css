@@ -22565,3 +22565,6 @@ dialog.automation-prerequisite-dialog[open] { display: flex; flex-direction: col
 .automation-prerequisite-dialog > footer p { margin: 0 0 8px; overflow-wrap: anywhere; }
 .automation-prerequisite-body { min-height: 0; overflow: auto; padding: 16px; }
 .automation-prerequisite-body .automation-form { margin: 0; }
+
+/* A bounded saved-note confirmation must retain lines without widening a dialog. */
+[data-note-saved-preview] { overflow-wrap: anywhere; white-space: pre-wrap; }

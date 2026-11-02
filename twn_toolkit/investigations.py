@@ -1148,14 +1148,16 @@ class InvestigationStore:
         *,
         before_event_id: str = "",
         after_event_id: str = "",
+        include_event_id: str = "",
     ) -> dict[str, Any]:
         """Return a chronological summary page without retained diagnostic payloads."""
         before_event_id = str(before_event_id).strip()
         after_event_id = str(after_event_id).strip()
-        if before_event_id and after_event_id:
+        include_event_id = str(include_event_id).strip()
+        if sum(bool(value) for value in (before_event_id, after_event_id, include_event_id)) > 1:
             raise InvestigationError("Choose one journal page cursor.")
         self.get_for_user(investigation_id, user_id)
-        cursor_id = before_event_id or after_event_id
+        cursor_id = before_event_id or after_event_id or include_event_id
         with self._connect() as connection:
             cursor = None
             if cursor_id:
@@ -1172,8 +1174,9 @@ class InvestigationStore:
             where = "WHERE e.investigation_id = ?"
             parameters: list[Any] = [investigation_id]
             order = "ORDER BY e.started_at DESC, e.created_at DESC, e.id DESC"
-            if before_event_id:
-                where += " AND (e.started_at, e.created_at, e.id) < (?, ?, ?)"
+            if before_event_id or include_event_id:
+                comparison = "<=" if include_event_id else "<"
+                where += f" AND (e.started_at, e.created_at, e.id) {comparison} (?, ?, ?)"
                 parameters.extend(
                     [cursor["started_at"], cursor["created_at"], cursor["id"]]
                 )
@@ -1200,6 +1203,12 @@ class InvestigationStore:
                 """,
                 [*parameters, JOURNAL_EVENT_PAGE_SIZE + 1],
             ).fetchall()
+            include_has_newer = bool(include_event_id and connection.execute(
+                """SELECT 1 FROM investigation_events
+                WHERE investigation_id = ? AND (started_at, created_at, id) > (?, ?, ?)
+                LIMIT 1""",
+                (investigation_id, cursor["started_at"], cursor["created_at"], cursor["id"]),
+            ).fetchone())
         has_more_in_direction = len(rows) > JOURNAL_EVENT_PAGE_SIZE
         page_rows = rows[:JOURNAL_EVENT_PAGE_SIZE]
         if cursor_id and not page_rows:
@@ -1207,7 +1216,8 @@ class InvestigationStore:
         chronological_rows = page_rows if after_event_id else reversed(page_rows)
         events = [self._event_summary(row) for row in chronological_rows]
         has_older = has_more_in_direction if not after_event_id else bool(events)
-        has_newer = has_more_in_direction if after_event_id else bool(events and before_event_id)
+        has_newer = (include_has_newer if include_event_id else
+            has_more_in_direction if after_event_id else bool(events and before_event_id))
         return {
             "events": events,
             "has_older": has_older,

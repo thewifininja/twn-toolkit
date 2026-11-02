@@ -6,7 +6,10 @@
   const note = dialog.querySelector("textarea[name='note']");
   const closeButtons = dialog.querySelectorAll("[data-case-note-close]");
 
+  const form = dialog.querySelector("form");
+  const pending = () => window.TwnUnsavedForms?.isPending(form);
   const close = () => {
+    if (pending()) return;
     if (typeof dialog.close === "function") dialog.close();
     else dialog.removeAttribute("open");
   };
@@ -16,6 +19,9 @@
     else dialog.setAttribute("open", "");
     window.requestAnimationFrame(() => note.focus());
   });
+
+  dialog.addEventListener("cancel", (event) => { if (pending()) event.preventDefault(); });
+  dialog.addEventListener("close", () => openButton.focus());
 
   closeButtons.forEach((button) => button.addEventListener("click", close));
   dialog.addEventListener("click", (event) => {

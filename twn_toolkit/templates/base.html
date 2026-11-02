@@ -413,18 +413,22 @@
     </div>
     {% if active_investigation %}
       <dialog class="active-case-note-dialog" data-case-note-dialog aria-labelledby="active-case-note-title">
-        <form method="post" action="{{ url_for('add_investigation_note', investigation_id=active_investigation.id) }}" class="active-case-note-form">
+        <form data-unsaved-form data-investigation-note data-journal-url="{{ url_for('investigation_detail', investigation_id=active_investigation.id) }}" method="post" action="{{ url_for('add_investigation_note', investigation_id=active_investigation.id) }}" class="active-case-note-form">
+          <input type="hidden" name="response_mode" value="journal">
           <input type="hidden" name="next" value="{{ request.script_root }}{{ request.full_path }}">
           <header>
             <span class="eyebrow">Case journal</span>
             <h2 id="active-case-note-title">Add a quick note</h2>
           </header>
-          <p>Record context in <strong>{{ active_investigation.title }}</strong> without leaving this page.</p>
+          <p>Record context in <strong>{{ active_investigation.title }}</strong> without leaving this page. Close keeps an unsaved note on this page.</p>
           <label for="active-case-note">Note
             <textarea id="active-case-note" name="note" maxlength="4000" rows="5" required placeholder="What did you observe, change, learn, or decide?"></textarea>
           </label>
+          <p role="status" data-note-status></p>
+          <a data-note-check hidden class="button-link secondary" href="{{ url_for('investigation_detail', investigation_id=active_investigation.id) }}" target="_blank" rel="noopener">Check journal in a new tab</a>
+          <div class="message success" data-note-confirmation hidden><strong>Saved to the journal</strong><p data-note-saved-preview></p><a data-note-saved-link target="_blank" rel="noopener">View saved note in journal</a></div>
           <footer>
-            <button class="secondary" type="button" data-case-note-close>Cancel</button>
+            <button class="secondary" type="button" data-case-note-close>Close</button>
             <button type="submit">Add to journal</button>
           </footer>
         </form>
@@ -526,6 +530,10 @@
     <script src="{{ url_for('static', filename='sidebar.js', v=asset_version) }}"></script>
     <script src="{{ url_for('static', filename='workspace-tabs.js', v=asset_version) }}"></script>
     <script src="{{ url_for('static', filename='tool-results-workspace.js', v=asset_version) }}"></script>
+    {% if active_investigation %}
+      <script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
+    {% endif %}
+    <script src="{{ url_for('static', filename='investigation-authoring.js', v=asset_version) }}"></script>
     {% if active_investigation %}
       <script src="{{ url_for('static', filename='case-note.js', v=asset_version) }}"></script>
     {% endif %}
