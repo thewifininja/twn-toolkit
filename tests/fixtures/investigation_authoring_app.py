@@ -51,6 +51,7 @@ def add_note(*values,**kwargs):
         store.set_state(case['id'],case['owner_user_id'],case['owner_username'],'completed')
     if current.get('response') == 'validation': raise InvestigationError('Synthetic validation: preserve this note and try after correction.')
     event = original_add(*values,**kwargs)
+    request.environ['fixture.note_committed'] = True
     for number in range(max(0,min(101,int(current.get('later_notes',0))))):
         original_add(values[0],values[1],values[2],f'Synthetic later note {number+1}')
     return event
@@ -80,12 +81,21 @@ def uncertain_ack(response):
     mode = request.environ.get('fixture.response_after')
     if response.status_code in {201,302}:
         if mode == 'html_after':
-            return Response('<h1>Synthetic lost acknowledgement after note save</h1>',mimetype='text/html')
-        if mode == 'json500_after':
-            return jsonify(error='Synthetic internal failure after committed note'),500
-        if mode == 'wrong_summary' and response.is_json:
+            response = Response('<h1>Synthetic lost acknowledgement after note save</h1>',mimetype='text/html')
+        elif mode == 'json500_after':
+            response = jsonify(error='Synthetic internal failure after committed note')
+            response.status_code = 500
+        elif mode == 'wrong_summary' and response.is_json:
             payload = response.get_json(); payload['event']['summary'] = 'Synthetic different note acknowledgment'
-            return jsonify(payload),201
+            response = jsonify(payload)
+            response.status_code = 201
+    if request.method == 'POST' and request.path.endswith('/notes'):
+        counts.setdefault('note_responses',[]).append({
+            'status':response.status_code, 'mimetype':response.mimetype,
+            'mode':mode or 'normal',
+            'committed':bool(request.environ.get('fixture.note_committed')),
+        })
+        (root/'counts.json').write_text(json.dumps(counts))
     return response
 
 @app.get('/fixture')
