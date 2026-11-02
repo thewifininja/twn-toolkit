@@ -43,6 +43,7 @@
           {% endif %}
         </div>
       </details>
+      {% if not is_popout|default(false) %}<button class="secondary compact" id="remote-terminal-connect-again" type="button" hidden>Connect again…</button>{% endif %}
       <button class="secondary compact" id="remote-terminal-stop" type="button">Stop session</button>
     </div>
   </header>
