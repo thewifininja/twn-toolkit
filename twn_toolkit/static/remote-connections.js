@@ -88,7 +88,7 @@
     quickDraftTouched = true;
     pendingConnectionAgain = null;
     replaceDraftButton.hidden = true;
-    reconnectNote.textContent = 'Review a NEW connection using the previous destination. The old session and its output stay available. Saved-host settings and credentials are not reloaded; use Connections for the latest saved settings. SSH exceptions are off.';
+    reconnectNote.textContent = 'Review a NEW connection using the previous destination. The old session and its output stay available. Saved-host settings and credentials are not reloaded; use Connections for the latest saved settings. SSH exceptions start off; review Connection options before connecting.';
     reconnectNote.hidden = false;
     setStatus('remote-terminal-start-status', session.protocol === 'ssh' ? 'Enter credentials and review the destination before clicking Connect.' : 'Review the destination before clicking Connect.');
     openDialog(quickDialog, session.protocol === 'console' ? 'remote-terminal-console-device' : 'remote-terminal-host');
@@ -127,6 +127,7 @@
       return;
     }
     if (form === quickForm) {
+      if (pendingConnectionAgain) reconnectNote.hidden = true;
       pendingConnectionAgain = null;
       replaceDraftButton.hidden = true;
     }
