@@ -52,6 +52,13 @@
       const editedWhileSaving = !resetSharing && control.querySelector('[data-mso-switch]').checked !== state.submittedEnabled;
       render(control, profile.name, editedWhileSaving);
     },
+    newProfile(container) {
+      const control = find(container);
+      if (!control) return;
+      const state = states.get(control);
+      state.submittedEnabled = undefined;
+      render(control, "");
+    },
     deleteMessage(container, name) {
       const state = states.get(find(container));
       return state?.current?.enabled ? `Delete shared profile “${name}” from the entire fleet?` : `Delete profile “${name}”?`;

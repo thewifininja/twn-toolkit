@@ -9,15 +9,15 @@
     return;
   }
   if (!forms.length) return;
-  const signature = (form) => JSON.stringify(Array.from(form.elements)
-    .filter((field) => field.matches("input, select, textarea") && !field.hasAttribute("data-unsaved-ignore")
-      && !["submit", "reset", "button"].includes(field.type))
+  const fields = (form) => Array.from(form.elements).filter((field) => field.matches("input, select, textarea") && !field.hasAttribute("data-unsaved-ignore") && !["submit", "reset", "button"].includes(field.type));
+  const signature = (form) => JSON.stringify(fields(form)
     .map((field) => [field.name, field.type, field.type === "file"
       ? Array.from(field.files || [], (file) => [file.name, file.size, file.lastModified])
       : field.tagName === "SELECT" && field.multiple
         ? Array.from(field.selectedOptions, (option) => option.value)
         : ["checkbox", "radio"].includes(field.type) ? field.checked : field.value]));
   const baselines = new Map(forms.map((form) => [form, signature(form)]));
+  const knownFields = new Map(forms.map((form) => [form, new Set(fields(form))]));
   const dirty = (form) => form.dataset.unsavedInitial === "true"
     || signature(form) !== baselines.get(form);
   const pendingSaves = new Set();
@@ -27,6 +27,7 @@
     register: (form) => {
       if (baselines.has(form)) return false;
       forms.push(form);
+      knownFields.set(form, new Set(fields(form)));
       baselines.set(form, signature(form));
       return true;
     },
@@ -35,10 +36,25 @@
       pendingSaves.add(form);
       return signature(form);
     },
-    acknowledge: (form, snapshot) => {
+    registerControls: (form, added) => {
+      if (!baselines.has(form)) return;
+      const current = fields(form), values = JSON.parse(signature(form));
+      const baseline = JSON.parse(baselines.get(form)), known = knownFields.get(form);
+      current.forEach((field, index) => {
+        if (added.includes(field) && !known.has(field)) {
+          baseline.splice(index, 0, values[index]); known.add(field);
+        }
+      });
+      baselines.set(form, JSON.stringify(baseline));
+    },
+    acknowledge: (form, snapshot, savedValues = {}) => {
       if (!baselines.has(form) || typeof snapshot !== "string") return;
       pendingSaves.delete(form);
-      baselines.set(form, snapshot);
+      const baseline = JSON.parse(snapshot);
+      baseline.forEach((entry) => {
+        if (Object.hasOwn(savedValues, entry[0])) entry[2] = savedValues[entry[0]];
+      });
+      baselines.set(form, JSON.stringify(baseline));
       delete form.dataset.unsavedInitial;
     },
     failed: (form) => {

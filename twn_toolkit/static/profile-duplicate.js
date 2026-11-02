@@ -1,7 +1,7 @@
 (() => {
   const currentUrl = new URL(window.location.href);
   const duplicatedName = currentUrl.searchParams.get("duplicated");
-  if (duplicatedName) {
+  if (duplicatedName && !document.querySelector("[data-network-profiles]")) {
     const matchingOption = [...document.querySelectorAll("select option")].find(
       (option) => option.value === duplicatedName,
     );
@@ -31,6 +31,7 @@
   };
 
   document.querySelectorAll("[data-profile-duplicate]").forEach((button) => {
+    if (button.closest("[data-network-profiles]")) return;
     button.addEventListener("click", async () => {
       const name = selectedName(button);
       if (!name) {

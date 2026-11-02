@@ -5,8 +5,9 @@
 {% block content %}
 {% set has_results = results is not none %}
 {% set accepted_count = results|selectattr('status', 'equalto', 'Access-Accept')|list|length if has_results else 0 %}
-{% set initial_radius_tab = 'workflows' if has_results or error or (servers and credentials) else 'profiles' %}
-<div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}" data-workspace-tabs data-initial-tab="{{ initial_radius_tab }}" data-forced-tab="{{ 'true' if has_results or error else 'false' }}" data-workspace-tabs-key="twn.radius-workspace-tab">
+{% set initial_radius_tab = 'workflows' if has_results or error else 'profiles' if request.args.get('profiles') == '1' else 'workflows' if servers and credentials else 'profiles' %}
+<div class="tool-workspace" data-tool-workspace data-network-profiles="radius" data-profile-choices-url="{{ url_for('tools.radius_profile_choices') }}" data-profile-save-template="{{ url_for('tools.save_radius_profile', kind='__KIND__') }}" data-tool-state="{{ 'results' if has_results else 'setup' }}" data-workspace-tabs data-initial-tab="{{ initial_radius_tab }}" data-forced-tab="{{ 'true' if has_results or error or request.args.get('profiles') == '1' else 'false' }}" data-workspace-tabs-key="twn.radius-workspace-tab">
+<div class="button-row"><button class="secondary" type="button" data-profile-choices-refresh>Refresh saved choices</button><a class="button-link secondary" target="_blank" rel="noopener" href="{{ url_for('tools.radius_test', profiles='1') }}">Open saved library in a new tab</a><span role="status" data-profile-choice-status></span></div>
 <nav class="tool-workspace-tabs" role="tablist" aria-label="RADIUS workspace">
   <button id="radius-workflows-tab" type="button" role="tab" data-workspace-tab="workflows" aria-controls="radius-workflows-panel" aria-selected="{{ 'true' if initial_radius_tab == 'workflows' else 'false' }}">
     <span>Run tests</span><small>Authenticate against one or more saved servers</small>
@@ -29,8 +30,8 @@
     <strong>EAP testing temporarily disabled</strong>
     <p>{{ eap_disabled_reason }} Installing <code>eapol_test</code> will not enable this feature.</p>
   </div>
-  <form class="form" id="radius-test-form" method="post" enctype="multipart/form-data" data-loading-message="Running RADIUS authentication test…">
-    <fieldset class="choice-group">
+  <form class="form" id="radius-test-form" data-unsaved-form method="post" enctype="multipart/form-data" data-loading-message="Running RADIUS authentication test…">
+    <fieldset class="choice-group" data-profile-choice-group="servers">
       <legend>RADIUS servers</legend>
       {% if servers %}
         {% for server in servers %}
@@ -40,12 +41,12 @@
           </label>
         {% endfor %}
       {% else %}
-        <span class="field-note">No servers saved. Add a server in the Profiles tab, then return to Run tests.</span>
+        <span class="field-note" data-profile-empty>No servers saved. Add a server in the Profiles tab, then return to Run tests.</span>
       {% endif %}
     </fieldset>
     <div class="radius-run-grid">
       <label>Credential profile
-        <select name="credential_name" required>
+        <select name="credential_name" data-profile-choice-select="credentials" required>
           <option value="">Select credentials</option>
           {% for profile in credentials %}
             <option value="{{ profile.name }}" {% if form.credential_name == profile.name %}selected{% endif %}>{{ profile.name }} — {{ profile.username }}</option>
@@ -53,7 +54,7 @@
         </select>
       </label>
       <label>Request-attribute profile
-        <select name="attribute_profile">
+        <select name="attribute_profile" data-profile-choice-select="attributes">
           <option value="">No additional attributes</option>
           {% for profile in attribute_profiles %}
             <option value="{{ profile.name }}" {% if form.attribute_profile == profile.name %}selected{% endif %}>{{ profile.name }} — {{ profile.count }} attribute(s)</option>
@@ -235,5 +236,6 @@
 </div>
 <script src="{{ url_for('static', filename='radius-test.js', v=asset_version) }}"></script>
 <script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
+<script src="{{ url_for('static', filename='network-profile-editor.js', v=asset_version) }}"></script>
 </div>
 {% endblock %}
