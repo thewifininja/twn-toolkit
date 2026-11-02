@@ -81,7 +81,7 @@ def register_sftp_routes(tools_bp):
         published_paths = set(transfer_view['published_paths']) if transfer_view else set()
         for row in results or []:
             row['output_confirmed'] = row.get('status') == 'success' and (
-                row.get('stored_path') in published_paths if form.get('output_mode') == 'datastore'
+                isinstance(row.get('stored_path'), str) and row['stored_path'] in published_paths if form.get('output_mode') == 'datastore'
                 else bool(transfer_view and transfer_view['archive_confirmed']))
             row['size_display'] = format_bytes(int(row.get('size', 0)))
         return render_template('tools/multi_sftp.html', error=error, form=form, results=results,

@@ -289,3 +289,16 @@ def test_zip_receipt_cannot_confirm_a_datastore_path(transfer):
     assert 'included in ZIP' in page
     assert 'published to Datastore' not in page
     assert 'unconfirmed-datastore-path' not in page
+
+
+@pytest.mark.parametrize('stored_path', [[], {}])
+def test_malformed_stored_path_renders_unconfirmed_instead_of_error(transfer, stored_path):
+    app, client, store = transfer
+    rows = [result('success'), result('success', 'two.test')]
+    rows[0]['stored_path'] = stored_path
+    identifier = saved_job(store, rows, mode='datastore')
+    response = client.get('/tools/multi-transfer', query_string={'job': identifier})
+    assert response.status_code == 200
+    page = response.get_data(as_text=True)
+    assert 'Outcome unconfirmed' in page
+    assert page.count('output availability unconfirmed') == 2
