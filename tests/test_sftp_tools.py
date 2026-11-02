@@ -284,7 +284,8 @@ class SftpRouteTests(unittest.TestCase):
             self.assertIn(b"PK", download.data[:4])
             results_page = response
             self.assertIn(b"SFTP Results", results_page.data)
-            self.assertIn(b"1 of 1 transfer(s) fetched", results_page.data)
+            self.assertIn(b"1 of 1 transfer(s) included in the retained ZIP", results_page.data)
+            self.assertIn(b"1 of 1 transfer(s) reported successful on this page", results_page.data)
             self.assertIn(b"included in ZIP", results_page.data)
             self.assertNotIn(b"Open destination", results_page.data)
 
