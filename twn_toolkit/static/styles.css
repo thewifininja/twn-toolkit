@@ -22238,6 +22238,7 @@ body.remote-terminal-resizing * {
 }
 
 .multi-ssh-host-choices-list {
+  padding: 0.75rem;
   display: grid;
   gap: 0.75rem;
   max-height: 24rem;
