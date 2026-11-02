@@ -315,6 +315,13 @@
       const current = readChoices();
       choicesState.value = current === initialChoices ? '' : current;
     }
+    const choiceSummary = reviewContent?.querySelector('[data-ssh-choice-summary]');
+    if (choiceSummary) {
+      const unknown = reviewContent.querySelectorAll('[name="unknown_key_hosts"]:checked').length;
+      const legacy = reviewContent.querySelectorAll('[name="legacy_algorithm_hosts"]:checked').length;
+      const total = reviewContent.querySelectorAll('[name="unknown_key_hosts"]').length;
+      choiceSummary.textContent = `Unrecognized keys: ${unknown}/${total} hosts · Legacy algorithms: ${legacy}/${total} hosts.`;
+    }
     reviewContent?.querySelectorAll('[data-ssh-choice-all]').forEach((all) => {
       const fields = [...reviewContent.querySelectorAll(`input[name="${all.dataset.sshChoiceAll}"]`)];
       const checked = fields.filter((field) => field.checked).length;
@@ -356,7 +363,10 @@
       // Carry only the user's current, explicit choices for unchanged host names.
       const choices = [...reviewContent.querySelectorAll('input[type=checkbox]:checked')]
         .map((input) => [input.name, input.value]);
+      const overridesOpen = reviewContent.querySelector('[data-ssh-host-overrides]')?.open || false;
       reviewContent.innerHTML = payload.html;
+      const overrides = reviewContent.querySelector('[data-ssh-host-overrides]');
+      if (overrides) overrides.open = overridesOpen;
       reviewContent.querySelectorAll('input[type=checkbox]').forEach((input) => {
         input.checked = choices.some(([name, host]) => name === input.name && host === input.value);
       });
@@ -395,6 +405,7 @@
   runForm.querySelector('[name="port"]')?.addEventListener('input', () => {
     if (!reviewContent) return;
     reviewContent.querySelectorAll('input[type=checkbox]').forEach((input) => { input.checked = false; });
+    syncChoiceGroups();
     markPreviewStale();
   });
 

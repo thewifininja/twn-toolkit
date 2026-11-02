@@ -23,12 +23,20 @@
   <legend>Connection choices for this run</legend>
   <p class="field-note">Known keys are verified normally. An unrecognized key is rejected unless you allow it for that host. Changed keys always stop the connection and require separate verification. Legacy algorithms stay off unless selected. No choices are saved as defaults.</p>
   <input type="hidden" name="per_host_options" value="on" data-unsaved-ignore>
-  {% if preview.plans|length > 1 %}
+  {% set host_scope = 'this host' if preview.plans|length == 1 else 'all ' ~ preview.plans|length ~ ' listed hosts' %}
   <div class="form-grid">
-    <label class="check"><input data-unsaved-ignore type="checkbox" data-ssh-choice-all="unknown_key_hosts">Allow unrecognized keys for all {{ preview.plans|length }} listed hosts</label>
-    <label class="check"><input data-unsaved-ignore type="checkbox" data-ssh-choice-all="legacy_algorithm_hosts">Allow legacy algorithms for all {{ preview.plans|length }} listed hosts</label>
+    <label class="check"><input data-unsaved-ignore type="checkbox" data-ssh-choice-all="unknown_key_hosts">Allow unrecognized keys for {{ host_scope }}</label>
+    <label class="check"><input data-unsaved-ignore type="checkbox" data-ssh-choice-all="legacy_algorithm_hosts">Allow legacy algorithms (including SHA-1 RSA) for {{ host_scope }}</label>
   </div>
-  {% endif %}
+  {% set choices = namespace(unknown=0, legacy=0) %}
+  {% for plan in preview.plans %}
+    {% if plan.host in form.get('unknown_key_hosts', []) %}{% set choices.unknown = choices.unknown + 1 %}{% endif %}
+    {% if plan.host in form.get('legacy_algorithm_hosts', []) %}{% set choices.legacy = choices.legacy + 1 %}{% endif %}
+  {% endfor %}
+  <p class="field-note" data-ssh-choice-summary role="status">Unrecognized keys: {{ choices.unknown }}/{{ preview.plans|length }} hosts · Legacy algorithms: {{ choices.legacy }}/{{ preview.plans|length }} hosts.</p>
+  <p class="field-note">Host identities are checked when connecting; this command review does not contact hosts.</p>
+  <details class="multi-ssh-exact-plan" data-ssh-host-overrides>
+    <summary>Individual host overrides · {{ preview.plans|length }} {{ 'host' if preview.plans|length == 1 else 'hosts' }}</summary>
   <div class="multi-ssh-host-choices-list">
   {% for plan in preview.plans %}
   <div class="multi-ssh-exact-plan" role="group" aria-label="Connection choices for {{ plan.host }}">
@@ -38,5 +46,6 @@
   </div>
   {% endfor %}
   </div>
+  </details>
 </fieldset>
 {% endif %}

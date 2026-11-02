@@ -1,4 +1,5 @@
 """Automatic command review never connects; explicit run choices stay host scoped."""
+import re
 from unittest.mock import patch
 
 import pytest
@@ -45,7 +46,7 @@ def test_automatic_review_never_connects_admits_or_retains_credentials(review):
     connect.assert_not_called()
     assert 'must-not-render' not in payload['html']
     assert 'first.test' in payload['html'] and 'second.test' in payload['html']
-    assert 'checked' not in payload['html']
+    assert re.search(r'<input\b[^>]*\schecked(?:\s|=|>)', payload['html']) is None
     assert DiagnosticJobStore(app.instance_path).recent('test-user', 'bulk_ssh') == []
 
 
