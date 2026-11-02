@@ -20,11 +20,11 @@ module.exports = async function checkContinuity(source) {
     form.action = "https://fixture.test/owned/old/cancel";
     form.querySelector = () => cancel;
     panel.querySelector = selector => ({ "[data-diagnostic-status]": status, "[data-diagnostic-state]": state, "[data-diagnostic-cancel]": form, "[data-diagnostic-result-link]": link })[selector] || null;
-    const timers = new Map(), calls = [], responses = [], events = {}, docEvents = {};
+    const timers = new Map(), deferred = [], calls = [], responses = [], events = {}, docEvents = {};
     let clock = 0, reloads = 0;
     const window = {
       location: { href: "https://fixture.test/current?job=second", reload: () => { reloads += 1; } },
-      setTimeout: fn => { timers.set(++clock, fn); return clock; }, clearTimeout: id => timers.delete(id),
+      setTimeout: (fn, delay) => { const id = ++clock; if (delay === 0) deferred.push(fn); else timers.set(id, fn); return id; }, clearTimeout: id => timers.delete(id),
       addEventListener: (type, fn) => { events[type] = fn; },
     };
     if (guard) window.TwnUnsavedForms = { hasChanges: () => dirty };
@@ -42,6 +42,7 @@ module.exports = async function checkContinuity(source) {
     new Function("document", "window", "fetch", "AbortSignal", "FormData", "URL", "HTMLFormElement", source)(document, window, fetch, { timeout: () => ({}) }, FormData, FixtureURL, Element);
     return { panel, status, state, form, cancel, link, draft, calls, responses, timers, events, docEvents,
       get reloads() { return reloads; },
+      endSubmit: async () => { while (deferred.length) deferred.shift()(); await flush(); },
       tick: async () => { const first = timers.entries().next().value; assert(first, "Expected scheduled poll"); timers.delete(first[0]); await first[1](); },
       retry: async () => { const button = status.children.find(x => x.tagName === "button"); assert(button, "Retry status missing"); await button.events.click(); await flush(); },
     };
@@ -133,7 +134,7 @@ module.exports = async function checkContinuity(source) {
   });
   await test("later submit cancellation does not leave navigation pending", async () => {
     const f = setup(); const event = { target: f.form, defaultPrevented: false };
-    f.events.submit(event); event.defaultPrevented = true; await flush();
+    f.events.submit(event); await flush(); event.defaultPrevented = true; await f.endSubmit();
     f.responses.push(reply("succeeded")); await f.tick();
     assert(f.reloads === 1, "Cancelled submission left pending navigation protection forever");
   });
@@ -169,6 +170,13 @@ module.exports = async function checkContinuity(source) {
       assert(f.form.afterElement.textContent.includes("could not be confirmed"), "Unexpected response claimed cancellation");
       assert(f.calls.filter(x => x.options.method === "POST").length === 1 && !f.reloads, "Unknown cancellation response repeated POST or discarded draft");
     }
+  });
+  await test("later guard cancellation clears a briefly preserved completion message", async () => {
+    const f = setup(); const event = { target: f.form, defaultPrevented: false };
+    f.events.submit(event); f.responses.push(reply("succeeded")); await f.tick();
+    assert(!f.reloads && f.status.textContent.includes("new request"), "Provisional native intent did not protect completion");
+    event.defaultPrevented = true; await f.endSubmit();
+    assert(!f.reloads && !f.status.textContent.includes("new request") && f.link.target === "_blank", "Cancelled intent left stale pending message or discarded retained link");
   });
   return results;
 };
