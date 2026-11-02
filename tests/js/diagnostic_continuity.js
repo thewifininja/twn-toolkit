@@ -10,7 +10,7 @@ module.exports = async function checkContinuity(source) {
     replaceChildren(...children) { this._text = ""; this.children = children; }
     after(element) { this.afterElement = element; }
   }
-  const reply = (state, status = 200) => ({ ok: status < 400, status, headers: { get: () => "application/json" }, json: async () => ({ state }) });
+  const reply = (state, status = 200, display = {}) => ({ ok: status < 400, status, headers: { get: () => "application/json" }, json: async () => ({ state, ...display }) });
   class FixtureURL { constructor(value, base) { this.origin = (value.match(/^https?:\/\/[^/]+/) || (base || "https://fixture.test").match(/^https?:\/\/[^/]+/))[0]; const parts = value.replace(/^https?:\/\/[^/]+/, "").split("#")[0].split("?"); this.pathname = parts[0]; this.search = parts[1] ? "?" + parts[1] : ""; } }
   function setup({ dirty = false, guard = true, protectedForm = true } = {}) {
     const panel = new Element("section"), status = new Element("p"), state = new Element("span"), form = new Element("form"), cancel = new Element("button"), link = new Element("a");
@@ -183,6 +183,21 @@ module.exports = async function checkContinuity(source) {
     await f.form.events.submit({ preventDefault() {} }); await flush();
     assert(f.form.afterElement.textContent.includes("could not be confirmed"), "Cross-origin same-path redirect falsely acknowledged cancellation");
     assert(f.calls.filter(x => x.options.method === "POST").length === 1 && !f.reloads, "Cross-origin response caused replay or navigation");
+  });
+  await test("partial transfer completion keeps its outcome while preserving a new draft", async () => {
+    const f = setup({ dirty: true });
+    f.responses.push(reply("succeeded", 200, { display_label: "Partially complete", display_message: "1 of 2 transfers completed. Review per-file errors." }));
+    await f.tick();
+    assert(!f.reloads && f.state.textContent === "Partially complete", "Raw worker completion overwrote partial transfer state");
+    assert(f.status.textContent.includes("1 of 2 transfers completed") && f.status.textContent.includes("settings are still here"), "Outcome details or draft guidance were lost");
+    assert(f.link.target === "_blank" && f.link.href === "/owned/old?job=first", "Partial result link lost its owned run identity");
+  });
+  await test("active transfer projection updates heading and progress without changing execution", async () => {
+    const f = setup({ dirty: true });
+    f.responses.push(reply("running", 200, { display_label: "In progress", display_message: "Files may publish individually; this is not a complete result." }));
+    await f.tick();
+    assert(f.state.textContent === "In progress" && f.status.textContent.includes("not a complete result"), "Projected active state was lost");
+    assert(!f.reloads && !f.calls.some(x => x.options.method === "POST"), "A display update replayed work or discarded settings");
   });
   return results;
 };

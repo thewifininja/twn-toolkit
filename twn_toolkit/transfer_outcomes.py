@@ -91,4 +91,6 @@ def transfer_display(job: dict, *, rows: list[dict] | None = None, expected_tota
                         'Review the retained results and any available ZIP before queueing another fetch. A new fetch repeats the requested host/file set.')
     return {'state': state, 'outcome': outcome, 'label': label, 'tone': tone, 'message': message,
             'successful': successful if counts_known else None, 'total': total if counts_known else None,
-            'published_count': published_count, 'retry_advice': retry_advice}
+            'published_count': published_count, 'published_paths': published if paths_valid else [],
+            'archive_confirmed': mode == 'download' and destination_confirmed and outcome in {'succeeded', 'incomplete'},
+            'retry_advice': retry_advice}

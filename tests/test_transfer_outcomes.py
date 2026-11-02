@@ -236,6 +236,25 @@ def test_destination_proof_agrees_on_result_status_and_summary_only_history(tran
     assert re.findall(r'recent-run-state">([^<]+)</span>',result_page)==[label]
     assert re.findall(r'recent-run-state">([^<]+)</span>',overview)==[label]
     assert label in result_page
+    if mode == 'download' and not archive and 'success' in statuses:
+        assert 'included in ZIP' not in result_page
+        assert result_page.count('output availability unconfirmed') == statuses.count('success')
+        assert 'reported success' in result_page
+    if mode == 'datastore':
+        confirmed = set(published) if len(set(published)) == len(published) else set()
+        assert result_page.count('published to Datastore') == sum(path in confirmed for path in stored)
+        for path in set(stored) - confirmed:
+            assert f'path={path}' not in result_page
+
+
+def test_completed_result_has_one_primary_outcome_and_retains_run_identity(transfer):
+    app, client, store = transfer
+    identifier = saved_job(store, [result('success'), result('error', 'two.test')])
+    page = client.get('/tools/multi-transfer', query_string={'job': identifier}).get_data(as_text=True)
+    assert page.count('1 of 2 transfer(s) included in the retained ZIP.') == 1
+    assert 'data-diagnostic-heading' not in page
+    assert identifier in page and 'second deadline' in page
+    assert 'reported successful on this page' in page
 
 
 @pytest.mark.parametrize('rows,summary', [
@@ -259,3 +278,14 @@ def test_opened_job_row_contradictions_override_its_history_projection(transfer,
 def test_invalid_output_mode_receipt_never_claims_a_destination(bad_mode):
     view=transfer_display({'state':'succeeded','summary':{'successful':2,'total':2,'archive':True,'published_paths':[],'output_mode':bad_mode}})
     assert view['outcome']=='unknown'
+
+
+def test_zip_receipt_cannot_confirm_a_datastore_path(transfer):
+    app, client, store = transfer
+    row = result('success')
+    row['stored_path'] = 'unconfirmed-datastore-path'
+    identifier = saved_job(store, [row, result('success', 'two.test')], mode='download')
+    page = client.get('/tools/multi-transfer', query_string={'job': identifier}).get_data(as_text=True)
+    assert 'included in ZIP' in page
+    assert 'published to Datastore' not in page
+    assert 'unconfirmed-datastore-path' not in page

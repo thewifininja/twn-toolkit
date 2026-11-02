@@ -78,7 +78,11 @@ def register_sftp_routes(tools_bp):
             # summary-only projection. Keep this run's visible surfaces identical.
             display = transfer_view if job and item['id'] == job['id'] else transfer_display(item)
             item.update(display_label=display['label'], display_tone=display['tone'])
+        published_paths = set(transfer_view['published_paths']) if transfer_view else set()
         for row in results or []:
+            row['output_confirmed'] = row.get('status') == 'success' and (
+                row.get('stored_path') in published_paths if form.get('output_mode') == 'datastore'
+                else bool(transfer_view and transfer_view['archive_confirmed']))
             row['size_display'] = format_bytes(int(row.get('size', 0)))
         return render_template('tools/multi_sftp.html', error=error, form=form, results=results,
             datastore_folders=datastore.folders(), journal_event=job['summary'].get('journal_event') if job else None,
