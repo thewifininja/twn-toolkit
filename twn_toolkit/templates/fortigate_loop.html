@@ -4,9 +4,9 @@
 <link rel="stylesheet" href="{{ url_for('static',filename='loop-inspector.css') }}">
 {{ workspace_header('Switch loop inspector', 'Inspect switch links and redundancy across a FortiGate or its Fabric.', eyebrow='Experimental · Read only') }}
 {% include 'components/recent_runs.html' %}
-{% include 'components/diagnostic_job.html' %}
+{% with diagnostic_draft_form='loop-scan-form' %}{% include 'components/diagnostic_job.html' %}{% endwith %}
 {% if data %}<details class="panel"><summary>New scan · {{ selected_name }}</summary>{% else %}<section class="panel">{% endif %}
-<form class="form loop-scan" method="post" action="{{ url_for('fortigate_loop') }}" data-loading-message="Queueing switch inspection…">
+<form class="form loop-scan" data-unsaved-form id="loop-scan-form" method="post" action="{{ url_for('fortigate_loop') }}" data-loading-message="Queueing switch inspection…">
 <label>Connection profile<select name="profile" required><option value="">Choose a profile</option>{% for p in profiles %}<option value="{{ p.name }}" {% if p.name==selected_name or (not selected_name and (p.is_default or profiles|length==1)) %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select></label>
 <label>Scope<select name="scope"><option value="single" {% if scope=='single' %}selected{% endif %}>This FortiGate</option><option value="fabric" {% if scope=='fabric' %}selected{% endif %}>This FortiGate + Fabric</option></select></label>
 <label>VDOM<input name="vdom" value="{{ vdom }}" placeholder="Profile default" maxlength="80"></label>
@@ -43,4 +43,5 @@
 {% endif %}
 </section>
 <script src="{{ url_for('static',filename='diagnostic-job.js') }}"></script>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=app_version) }}"></script>
 {% endblock %}

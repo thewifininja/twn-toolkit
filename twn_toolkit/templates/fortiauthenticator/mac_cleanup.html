@@ -3,14 +3,14 @@
 {% block content %}
 <header class="run-page-heading"><h1>MAC Device Cleanup</h1></header>
 {% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
-{% include 'components/diagnostic_job.html' %}
+{% with diagnostic_draft_form='fac-cleanup-form' %}{% include 'components/diagnostic_job.html' %}{% endwith %}
 <section class="panel tool-panel">
   <div class="panel-head">
 
     <p>Build a live preview before removing group memberships or deleting MAC devices globally.</p>
   </div>
   {% if profiles %}
-    <form class="form" method="post" action="{{ url_for('fortiauthenticator_mac_cleanup') }}"
+    <form class="form" data-unsaved-form id="fac-cleanup-form" method="post" action="{{ url_for('fortiauthenticator_mac_cleanup') }}"
           data-loading-message="Building MAC cleanup preview…">
       <label>
         FortiAuthenticator profile
@@ -192,4 +192,5 @@
 <script src="{{ url_for('static', filename='diagnostic-job.js') }}"></script>
 <script src="{{ url_for('static', filename='mac-cleanup.js') }}"></script>
 <script src="{{ url_for('static', filename='appliance-operation.js') }}"></script>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=app_version) }}"></script>
 {% endblock %}

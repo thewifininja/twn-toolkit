@@ -8,7 +8,7 @@
 {% set diagnostic_result_endpoint = 'tools.multi_transfer' %}
 <header class="run-page-heading"><h1>Bulk Transfer</h1></header>
 {% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
-{% include 'components/diagnostic_job.html' %}
+{% with diagnostic_draft_form='bulk-transfer-form' %}{% include 'components/diagnostic_job.html' %}{% endwith %}
 {% if diagnostic_job and form.output_mode == 'datastore' %}
 <p class="message">Files publish individually. If a run stops or becomes unconfirmed, inspect the destination before retrying; already published files are not rolled back.</p>
 {% if diagnostic_job.summary.published_paths %}<details class="panel"><summary>Confirmed published files</summary><ul>{% for path in diagnostic_job.summary.published_paths %}<li><code>{{ path }}</code></li>{% endfor %}</ul></details>{% endif %}
@@ -28,7 +28,7 @@
     <button class="secondary tool-settings-close" type="button" data-tool-settings-close {% if not has_results %}hidden{% endif %}>Close settings</button>
   </div>
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
-  <form class="form compact-tool-form bulk-transfer-form" id="bulk-transfer-form" method="post" autocomplete="off" data-loading-message="Queueing Bulk Transfer…" data-sftp-form>
+  <form class="form compact-tool-form bulk-transfer-form" id="bulk-transfer-form" data-unsaved-form method="post" autocomplete="off" data-loading-message="Queueing Bulk Transfer…" data-sftp-form>
     <div class="bulk-transfer-config-grid">
       <section class="compact-tool-config-card bulk-transfer-access-card">
         <header class="compact-tool-config-head">
@@ -151,4 +151,5 @@
 <script src="{{ url_for('static', filename='multi-sftp.js', v=asset_version) }}"></script>
 <script src="{{ url_for('static', filename='diagnostic-job.js', v=asset_version) }}"></script>
 </div>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=app_version) }}"></script>
 {% endblock %}

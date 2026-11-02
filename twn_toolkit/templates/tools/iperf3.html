@@ -169,7 +169,7 @@
           </footer>
         </div>
       {% else %}
-        <form class="iperf-action-form" method="post" action="{{ url_for('tools.start_iperf3_server') }}" data-loading-message="Starting the managed iPerf3 server…">
+        <form class="iperf-action-form" data-unsaved-form method="post" action="{{ url_for('tools.start_iperf3_server') }}" data-loading-message="Starting the managed iPerf3 server…">
           {% if latest_server and latest_server.status == 'error' %}
             <p class="message error">
               <strong>The previous listener could not start.</strong>

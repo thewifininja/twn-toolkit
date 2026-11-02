@@ -10,7 +10,7 @@
 {% set diagnostic_completion_label = diagnostic_job.summary.get('outcome', 'succeeded')|title if diagnostic_job and diagnostic_job.state == 'succeeded' else none %}
 <header class="run-page-heading"><h1>Find Wireless Client History</h1></header>
 {% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
-{% include 'components/diagnostic_job.html' %}
+{% with diagnostic_draft_form='wireless-history-form' %}{% include 'components/diagnostic_job.html' %}{% endwith %}
 {% if diagnostic_job and diagnostic_job.config.profile.get('_fabric_target') %}<p class="field-note">Run target: <strong>{{ diagnostic_job.config.profile._fabric_target.hostname }}</strong> · {{ diagnostic_job.config.profile._fabric_target.serial }}</p>{% endif %}
 {{ case_recorded_notice(journal_event) }}
 <section class="panel tool-panel">
@@ -18,7 +18,7 @@
 
     <p>Search the selected FortiGate’s wireless-client logs for a client MAC and collapse matching AP events into transitions.</p>
   </div>
-  <form class="form" data-fabric-form method="post" action="{{ url_for('fortiap_client_history') }}"
+  <form class="form" data-fabric-form data-unsaved-form id="wireless-history-form" method="post" action="{{ url_for('fortiap_client_history') }}"
         data-loading-message="Queueing wireless history lookup…">
     <label>
       FortiGate profile
@@ -154,4 +154,5 @@
 <script src="{{ url_for('static', filename='diagnostic-job.js') }}"></script>
 <script src="{{ url_for('static', filename='appliance-read.js') }}"></script>
 <script src="{{ url_for('static', filename='task-fabric.js') }}"></script>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=app_version) }}"></script>
 {% endblock %}
