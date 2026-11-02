@@ -340,14 +340,14 @@ route,twn_toolkit/speed_test_routes.py,33,speed_test_download,'/speed-test/downl
 route,twn_toolkit/speed_test_routes.py,56,speed_test_upload,'/speed-test/upload',POST,unverified-static-index
 route,twn_toolkit/speed_test_routes.py,79,speed_test_activity,'/speed-test/activity',POST,unverified-static-index
 route,twn_toolkit/ssh_routes.py,69,multi_ssh,'/multi-ssh',"['GET', 'POST']",unverified-static-index
-route,twn_toolkit/ssh_routes.py,370,ssh_job,'/multi-ssh/jobs/<job_id>',GET,unverified-static-index
-route,twn_toolkit/ssh_routes.py,395,ssh_job_status,'/multi-ssh/jobs/<job_id>/status',GET,unverified-static-index
-route,twn_toolkit/ssh_routes.py,404,cancel_ssh_job,'/multi-ssh/jobs/<job_id>/cancel',POST,unverified-static-index
-route,twn_toolkit/ssh_routes.py,416,download_ssh_job,'/multi-ssh/jobs/<job_id>/download',GET,unverified-static-index
-route,twn_toolkit/ssh_routes.py,433,import_ssh_hosts,'/multi-ssh/import-hosts',POST,unverified-static-index
-route,twn_toolkit/ssh_routes.py,446,retry_multi_ssh_host_key,'/multi-ssh/host-keys/retry',POST,unverified-static-index
-route,twn_toolkit/ssh_routes.py,491,delete_ssh_commandlet,'/multi-ssh/commandlets/delete',POST,unverified-static-index
-route,twn_toolkit/ssh_routes.py,517,delete_ssh_host_matrix,'/multi-ssh/host-matrices/delete',POST,unverified-static-index
+route,twn_toolkit/ssh_routes.py,379,ssh_job,'/multi-ssh/jobs/<job_id>',GET,unverified-static-index
+route,twn_toolkit/ssh_routes.py,404,ssh_job_status,'/multi-ssh/jobs/<job_id>/status',GET,unverified-static-index
+route,twn_toolkit/ssh_routes.py,413,cancel_ssh_job,'/multi-ssh/jobs/<job_id>/cancel',POST,unverified-static-index
+route,twn_toolkit/ssh_routes.py,425,download_ssh_job,'/multi-ssh/jobs/<job_id>/download',GET,unverified-static-index
+route,twn_toolkit/ssh_routes.py,442,import_ssh_hosts,'/multi-ssh/import-hosts',POST,unverified-static-index
+route,twn_toolkit/ssh_routes.py,455,retry_multi_ssh_host_key,'/multi-ssh/host-keys/retry',POST,unverified-static-index
+route,twn_toolkit/ssh_routes.py,500,delete_ssh_commandlet,'/multi-ssh/commandlets/delete',POST,unverified-static-index
+route,twn_toolkit/ssh_routes.py,526,delete_ssh_host_matrix,'/multi-ssh/host-matrices/delete',POST,unverified-static-index
 route,twn_toolkit/subnet_routes.py,15,subnet_excluder,'/subnet-excluder',"['GET', 'POST']",unverified-static-index
 route,twn_toolkit/switch_order_routes.py,34,switch_order_job,'/fortigate/switch-order/jobs/<job_id>',GET,unverified-static-index
 route,twn_toolkit/switch_order_routes.py,61,switch_order_status,'/fortigate/switch-order/jobs/<job_id>/status',GET,unverified-static-index
@@ -1619,6 +1619,31 @@ button,twn_toolkit/templates/task.html,148,,"<button type=""submit"">",,unverifi
 template,twn_toolkit/templates/tools/_iperf_server_results.html,1,_iperf_server_results,,,unverified-static-index
 details,twn_toolkit/templates/tools/_iperf_server_results.html,4,,"<details class=""iperf-server-result-card"" id=""iperf-server-result-{{ server_result.id }}"">",,unverified-static-index
 details,twn_toolkit/templates/tools/_iperf_server_results.html,87,,"<details class=""iperf-raw-result"">",,unverified-static-index
+template,twn_toolkit/templates/tools/_multi_ssh_composer.html,1,_multi_ssh_composer,,,unverified-static-index
+select,twn_toolkit/templates/tools/_multi_ssh_composer.html,5,,"<select data-ssh-runbook-picker form=""multi-ssh-run-form"" data-unsaved-ignore>",,unverified-static-index
+button,twn_toolkit/templates/tools/_multi_ssh_composer.html,6,,"<button class=""secondary"" type=""button"" form=""multi-ssh-run-form"" data-ssh-runbook-add disabled>",,unverified-static-index
+input,twn_toolkit/templates/tools/_multi_ssh_composer.html,11,,"<input type=""hidden"" name=""selected_actions"" value=""{{ command_set.name }}"" data-unsaved-ignore form=""multi-ssh-run-form"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_multi_ssh_composer.html,16,,"<button class=""secondary compact"" type=""button"" form=""multi-ssh-run-form"" data-ssh-runbook-move=""up"" aria-label=""Move {{ command_set.name }} up"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_multi_ssh_composer.html,17,,"<button class=""secondary compact"" type=""button"" form=""multi-ssh-run-form"" data-ssh-runbook-move=""down"" aria-label=""Move {{ command_set.name }} down"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_multi_ssh_composer.html,18,,"<button class=""danger compact"" type=""button"" form=""multi-ssh-run-form"" data-ssh-runbook-remove aria-label=""Remove {{ command_set.name }} from run"">",,unverified-static-index
+details,twn_toolkit/templates/tools/_multi_ssh_composer.html,21,,"<details class=""multi-ssh-inline-fields"">",,unverified-static-index
+textarea,twn_toolkit/templates/tools/_multi_ssh_composer.html,21,,"<textarea rows=""5"" data-ssh-inline-commands form=""multi-ssh-run-form"" data-unsaved-ignore>",,unverified-static-index
+input,twn_toolkit/templates/tools/_multi_ssh_composer.html,21,,"<input type=""number"" min=""1"" max=""3600"" value=""{{ command_set.command_timeout }}"" data-ssh-inline-timeout form=""multi-ssh-run-form"" data-unsaved-ignore>",,unverified-static-index
+button,twn_toolkit/templates/tools/_multi_ssh_composer.html,28,,"<button type=""button"" form=""multi-ssh-run-form"" data-ssh-continue-review {% if not selected_run_actions %}disabled{% endif %}>",,unverified-static-index
+textarea,twn_toolkit/templates/tools/_multi_ssh_composer.html,32,,"<textarea class=""command-input"" rows=""7"" name=""inline_draft_commands"" form=""multi-ssh-run-form"" data-ssh-inline-draft placeholder=""show version&#10;show interfaces"">",,unverified-static-index
+details,twn_toolkit/templates/tools/_multi_ssh_composer.html,33,,"<details class=""multi-ssh-exact-plan"">",,unverified-static-index
+input,twn_toolkit/templates/tools/_multi_ssh_composer.html,33,,"<input name=""inline_draft_timeout"" type=""number"" min=""1"" max=""3600"" value=""{{ form.inline_draft_timeout }}"" form=""multi-ssh-run-form"" data-ssh-inline-draft-timeout>",,unverified-static-index
+button,twn_toolkit/templates/tools/_multi_ssh_composer.html,34,,"<button class=""secondary"" type=""button"" form=""multi-ssh-run-form"" data-ssh-add-inline disabled>",,unverified-static-index
+button,twn_toolkit/templates/tools/_multi_ssh_composer.html,34,,"<button class=""secondary"" type=""button"" form=""multi-ssh-run-form"" data-ssh-discard-inline>",,unverified-static-index
+template,twn_toolkit/templates/tools/_multi_ssh_connection_choices.html,1,_multi_ssh_connection_choices,,,unverified-static-index
+input,twn_toolkit/templates/tools/_multi_ssh_connection_choices.html,5,,"<input type=""hidden"" name=""per_host_options"" value=""on"" data-unsaved-ignore>",,unverified-static-index
+input,twn_toolkit/templates/tools/_multi_ssh_connection_choices.html,8,,"<input data-unsaved-ignore type=""checkbox"" data-ssh-choice-all=""unknown_key_hosts"">",,unverified-static-index
+input,twn_toolkit/templates/tools/_multi_ssh_connection_choices.html,9,,"<input data-unsaved-ignore type=""checkbox"" data-ssh-choice-all=""legacy_algorithm_hosts"">",,unverified-static-index
+details,twn_toolkit/templates/tools/_multi_ssh_connection_choices.html,18,,"<details class=""multi-ssh-exact-plan"" data-ssh-host-overrides>",,unverified-static-index
+input,twn_toolkit/templates/tools/_multi_ssh_connection_choices.html,24,,"<input data-unsaved-ignore type=""checkbox"" name=""unknown_key_hosts"" value=""{{ plan.host }}"" {% if plan.host in form.get('unknown_key_hosts', []) %}checked{% endif %}>",,unverified-static-index
+input,twn_toolkit/templates/tools/_multi_ssh_connection_choices.html,25,,"<input data-unsaved-ignore type=""checkbox"" name=""legacy_algorithm_hosts"" value=""{{ plan.host }}"" {% if plan.host in form.get('legacy_algorithm_hosts', []) %}checked{% endif %}>",,unverified-static-index
+template,twn_toolkit/templates/tools/_multi_ssh_review.html,1,_multi_ssh_review,,,unverified-static-index
+details,twn_toolkit/templates/tools/_multi_ssh_review.html,7,,"<details class=""multi-ssh-exact-plan"" data-ssh-preview>",,unverified-static-index
 template,twn_toolkit/templates/tools/_multi_ssh_run_options.html,1,_multi_ssh_run_options,,,unverified-static-index
 input,twn_toolkit/templates/tools/_multi_ssh_run_options.html,2,,"<input name=""allow_unknown_hosts"" type=""checkbox"" {% if form.allow_unknown_hosts %}checked{% endif %}>",,unverified-static-index
 input,twn_toolkit/templates/tools/_multi_ssh_run_options.html,6,,"<input name=""allow_legacy_algorithms"" type=""checkbox"" {% if form.allow_legacy_algorithms %}checked{% endif %}>",,unverified-static-index
@@ -2043,7 +2068,7 @@ input,twn_toolkit/templates/tools/multi_ssh.html,38,,"<input type=""hidden"" nam
 a,twn_toolkit/templates/tools/multi_ssh.html,40,,"<a class=""button-link secondary"" href=""{{ url_for('tools.multi_ssh') }}"">",,unverified-static-index
 button,twn_toolkit/templates/tools/multi_ssh.html,42,,"<button class=""secondary"" type=""button"" data-ssh-rename-matrix>",,unverified-static-index
 button,twn_toolkit/templates/tools/multi_ssh.html,43,,"<button class=""secondary"" type=""button"" data-ssh-copy=""matrix"">",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,44,,"<button class=""danger"" type=""submit"" form=""multi-ssh-host-form"" formaction=""{{ url_for('tools.delete_ssh_host_matrix') }}"" name=""name"" value=""{{ form.host_matrix_original_name }}"" formnovalidate onclick=""return confirm({{ ('Delete host matrix “' ~ form.host_matrix_original_name ~ '” and its CLI actions?') | tojson | forceescape }})"">",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,44,,"<button class=""danger"" type=""submit"" form=""multi-ssh-host-form"" formaction=""{{ url_for('tools.delete_ssh_host_matrix') }}"" name=""name"" value=""{{ form.host_matrix_original_name }}"" formnovalidate onclick=""return confirm({{ ('Delete host matrix “' ~ form.host_matrix_original_name ~ '” and its saved commands?') | tojson | forceescape }})"">",,unverified-static-index
 button,twn_toolkit/templates/tools/multi_ssh.html,59,,"<button type=""button"" role=""tab"" id=""multi-ssh-hosts-tab"" aria-controls=""multi-ssh-hosts-panel"" aria-selected=""{{ 'true' if active_workspace == 'hosts' else 'false' }}"" data-ssh-workspace-tab=""hosts"">",,unverified-static-index
 button,twn_toolkit/templates/tools/multi_ssh.html,60,,"<button type=""button"" role=""tab"" id=""multi-ssh-actions-tab"" aria-controls=""multi-ssh-actions-panel"" aria-selected=""{{ 'true' if active_workspace == 'actions' else 'false' }}"" data-ssh-workspace-tab=""actions"">",,unverified-static-index
 button,twn_toolkit/templates/tools/multi_ssh.html,61,,"<button type=""button"" role=""tab"" id=""multi-ssh-run-tab"" aria-controls=""multi-ssh-run-panel"" aria-selected=""{{ 'true' if active_workspace == 'run' else 'false' }}"" data-ssh-workspace-tab=""run"">",,unverified-static-index
@@ -2063,96 +2088,97 @@ button,twn_toolkit/templates/tools/multi_ssh.html,107,,"<button class=""secondar
 textarea,twn_toolkit/templates/tools/multi_ssh.html,118,,"<textarea class=""command-input multi-ssh-matrix"" name=""matrix"" rows=""10"" placeholder=""Name | Host | Interface | VDOM&#10;Branch 1 | 10.20.1.1 | fortilink | root&#10;Branch 2 | 10.20.2.1 | fortilink | root"" data-ssh-matrix data-1p-ignore>",,unverified-static-index
 button,twn_toolkit/templates/tools/multi_ssh.html,125,,"<button class=""secondary"" name=""action"" type=""submit"" value=""save_host_matrix"">",,unverified-static-index
 button,twn_toolkit/templates/tools/multi_ssh.html,126,,"<button name=""action"" type=""submit"" value=""save_host_matrix_continue"">",,unverified-static-index
-form,twn_toolkit/templates/tools/multi_ssh.html,141,,"<form method=""get"" class=""multi-ssh-action-picker"" data-ssh-action-picker>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,142,,"<input type=""hidden"" name=""host_matrix"" value=""{{ selected_matrix.name }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,143,,"<input type=""hidden"" name=""workspace"" value=""actions"">",,unverified-static-index
-select,twn_toolkit/templates/tools/multi_ssh.html,146,,"<select name=""matrix_action"" data-ssh-action-selector {% if not matrix_actions %}disabled{% endif %}>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,155,,"<button class=""secondary multi-ssh-new-action"" type=""button"" data-ssh-new-action>",,unverified-static-index
-details,twn_toolkit/templates/tools/multi_ssh.html,159,,"<details class=""multi-ssh-action-copy"">",,unverified-static-index
-form,twn_toolkit/templates/tools/multi_ssh.html,161,,"<form method=""post"" class=""multi-ssh-action-copy-form"" data-unsaved-form>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,162,,"<input type=""hidden"" name=""action"" value=""copy_matrix_action"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,163,,"<input type=""hidden"" name=""workspace"" value=""actions"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,164,,"<input type=""hidden"" name=""host_matrix_original_name"" value=""{{ selected_matrix.name }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,165,,"<input type=""hidden"" name=""mso_kind"" value=""ssh.matrix"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,165,,"<input type=""hidden"" name=""mso_id"" value=""{{ matrix_mso.get('id', '') }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,165,,"<input type=""hidden"" name=""mso_version"" value=""{{ matrix_mso.get('version', '') }}"">",,unverified-static-index
-select,twn_toolkit/templates/tools/multi_ssh.html,168,,"<select name=""copy_action_source"" required>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,175,,"<button class=""secondary"" type=""submit"">",,unverified-static-index
-form,twn_toolkit/templates/tools/multi_ssh.html,183,,"<form class=""form multi-ssh-action-editor"" method=""post"" autocomplete=""off"" data-unsaved-form>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,184,,"<input type=""hidden"" name=""workspace"" value=""actions"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,185,,"<input type=""hidden"" name=""host_matrix_original_name"" value=""{{ selected_matrix.name }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,186,,"<input type=""hidden"" name=""mso_kind"" value=""ssh.matrix"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,186,,"<input type=""hidden"" name=""mso_id"" value=""{{ matrix_mso.get('id', '') }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,186,,"<input type=""hidden"" name=""mso_version"" value=""{{ matrix_mso.get('version', '') }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,187,,"<input type=""hidden"" name=""matrix_action_original_name"" value=""{{ action_editor.original_name }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,193,,"<input name=""matrix_action_name"" maxlength=""100"" value=""{{ action_editor.name }}"" placeholder=""Collect interface status"" data-1p-ignore required>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,194,,"<input name=""matrix_action_platform"" maxlength=""80"" value=""{{ action_editor.platform }}"" placeholder=""FortiGate, Cisco IOS, Linux…"" data-1p-ignore>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,196,,"<input name=""matrix_action_description"" maxlength=""500"" value=""{{ action_editor.description }}"" placeholder=""When should an operator use this action?"" data-1p-ignore>",,unverified-static-index
-textarea,twn_toolkit/templates/tools/multi_ssh.html,197,,"<textarea class=""command-input"" name=""commands"" rows=""9"" placeholder=""config vdom&#10;edit {{ '{{ vdom }}' }}&#10;get system interface {{ '{{ interface }}' }}&#10;end"" required data-ssh-action-commands data-1p-ignore>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,199,,"<input name=""command_timeout"" type=""number"" min=""1"" max=""3600"" value=""{{ action_editor.command_timeout }}"" required data-1p-ignore>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,200,,"<button class=""secondary ssh-variable-chip"" type=""button"" data-ssh-variable=""{{ variable }}"">",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,205,,"<button name=""action"" value=""save_matrix_action"" type=""submit"">",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,206,,"<button class=""secondary"" name=""action"" value=""save_matrix_action_and_add"" type=""submit"">",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,207,,"<button class=""secondary"" name=""action"" value=""save_matrix_action_copy"" type=""button"" data-ssh-copy=""action"">",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,208,,"<button class=""danger"" name=""action"" value=""delete_matrix_action"" type=""submit"" formnovalidate data-ssh-action-delete {% if not action_editor.original_name %}hidden{% endif %}>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,213,,"<button type=""button"" class=""secondary"" data-ssh-open-workspace=""hosts"">",,unverified-static-index
-form,twn_toolkit/templates/tools/multi_ssh.html,220,,"<form class=""form multi-ssh-run-form"" id=""multi-ssh-run-form"" method=""post"" autocomplete=""off"" data-multi-ssh data-unsaved-form {% if ssh_job_api %}data-ssh-job-api{% endif %} data-ssh-host-count=""{{ selected_matrix.target_count }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,221,,"<input type=""hidden"" name=""workspace"" value=""run"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,222,,"<input type=""hidden"" name=""matrix_action_run"" value=""on"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,223,,"<input type=""hidden"" name=""host_matrix_original_name"" value=""{{ selected_matrix.name }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,224,,"<input type=""hidden"" name=""mso_kind"" value=""ssh.matrix"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,224,,"<input type=""hidden"" name=""mso_id"" value=""{{ matrix_mso.get('id', '') }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,224,,"<input type=""hidden"" name=""mso_version"" value=""{{ matrix_mso.get('version', '') }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,225,,"<input type=""hidden"" name=""matrix"" value=""{{ form.matrix }}"">",,unverified-static-index
-textarea,twn_toolkit/templates/tools/multi_ssh.html,226,,"<textarea name=""commands"" hidden>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,227,,"<input name=""command_timeout"" type=""hidden"" value=""{{ form.command_timeout }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,228,,"<input name=""preview_token"" type=""hidden"" value=""{{ preview_token }}"" data-ssh-preview-token>",,unverified-static-index
-select,twn_toolkit/templates/tools/multi_ssh.html,236,,<select data-ssh-runbook-picker>,,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,243,,"<button class=""secondary"" type=""button"" data-ssh-runbook-add disabled>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,248,,"<input type=""hidden"" name=""selected_actions"" value=""{{ matrix_action.name }}"" data-unsaved-ignore>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,253,,"<button class=""secondary compact"" type=""button"" data-ssh-runbook-move=""up"" aria-label=""Move {{ matrix_action.name }} up"">",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,254,,"<button class=""secondary compact"" type=""button"" data-ssh-runbook-move=""down"" aria-label=""Move {{ matrix_action.name }} down"">",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,255,,"<button class=""danger compact"" type=""button"" data-ssh-runbook-remove aria-label=""Remove {{ matrix_action.name }} from runbook"">",,unverified-static-index
-details,twn_toolkit/templates/tools/multi_ssh.html,271,,"<details class=""multi-ssh-exact-plan"" data-ssh-preview>",,unverified-static-index
+details,twn_toolkit/templates/tools/multi_ssh.html,137,,"<details class=""multi-ssh-exact-plan multi-ssh-workspace-card"" data-ssh-library-editor {% if request.form.get('action') in ['save_matrix_action','save_matrix_action_copy','copy_matrix_action','delete_matrix_action'] or request.args.get('new_action') %}open{% endif %}>",,unverified-static-index
+form,twn_toolkit/templates/tools/multi_ssh.html,144,,"<form method=""get"" class=""multi-ssh-action-picker"" data-ssh-action-picker>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,145,,"<input type=""hidden"" name=""host_matrix"" value=""{{ selected_matrix.name }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,146,,"<input type=""hidden"" name=""workspace"" value=""actions"">",,unverified-static-index
+select,twn_toolkit/templates/tools/multi_ssh.html,149,,"<select name=""matrix_action"" data-ssh-action-selector {% if not matrix_actions %}disabled{% endif %}>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,158,,"<button class=""secondary multi-ssh-new-action"" type=""button"" data-ssh-new-action>",,unverified-static-index
+details,twn_toolkit/templates/tools/multi_ssh.html,162,,"<details class=""multi-ssh-action-copy"">",,unverified-static-index
+form,twn_toolkit/templates/tools/multi_ssh.html,164,,"<form method=""post"" class=""multi-ssh-action-copy-form"" data-unsaved-form>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,165,,"<input type=""hidden"" name=""action"" value=""copy_matrix_action"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,166,,"<input type=""hidden"" name=""workspace"" value=""actions"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,167,,"<input type=""hidden"" name=""host_matrix_original_name"" value=""{{ selected_matrix.name }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,168,,"<input type=""hidden"" name=""mso_kind"" value=""ssh.matrix"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,168,,"<input type=""hidden"" name=""mso_id"" value=""{{ matrix_mso.get('id', '') }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,168,,"<input type=""hidden"" name=""mso_version"" value=""{{ matrix_mso.get('version', '') }}"">",,unverified-static-index
+select,twn_toolkit/templates/tools/multi_ssh.html,171,,"<select name=""copy_action_source"" required>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,178,,"<button class=""secondary"" type=""submit"">",,unverified-static-index
+form,twn_toolkit/templates/tools/multi_ssh.html,186,,"<form class=""form multi-ssh-action-editor"" method=""post"" autocomplete=""off"" data-unsaved-form>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,187,,"<input type=""hidden"" name=""workspace"" value=""actions"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,188,,"<input type=""hidden"" name=""host_matrix_original_name"" value=""{{ selected_matrix.name }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,189,,"<input type=""hidden"" name=""mso_kind"" value=""ssh.matrix"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,189,,"<input type=""hidden"" name=""mso_id"" value=""{{ matrix_mso.get('id', '') }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,189,,"<input type=""hidden"" name=""mso_version"" value=""{{ matrix_mso.get('version', '') }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,190,,"<input type=""hidden"" name=""matrix_action_original_name"" value=""{{ action_editor.original_name }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,196,,"<input name=""matrix_action_name"" maxlength=""100"" value=""{{ action_editor.name }}"" placeholder=""Collect interface status"" data-1p-ignore required>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,197,,"<input name=""matrix_action_platform"" maxlength=""80"" value=""{{ action_editor.platform }}"" placeholder=""FortiGate, Cisco IOS, Linux…"" data-1p-ignore>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,199,,"<input name=""matrix_action_description"" maxlength=""500"" value=""{{ action_editor.description }}"" placeholder=""When should an operator use this action?"" data-1p-ignore>",,unverified-static-index
+textarea,twn_toolkit/templates/tools/multi_ssh.html,200,,"<textarea class=""command-input"" name=""commands"" rows=""9"" placeholder=""config vdom&#10;edit {{ '{{ vdom }}' }}&#10;get system interface {{ '{{ interface }}' }}&#10;end"" required data-ssh-action-commands data-1p-ignore>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,202,,"<input name=""command_timeout"" type=""number"" min=""1"" max=""3600"" value=""{{ action_editor.command_timeout }}"" required data-1p-ignore>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,203,,"<button class=""secondary ssh-variable-chip"" type=""button"" data-ssh-variable=""{{ variable }}"">",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,208,,"<button name=""action"" value=""save_matrix_action"" type=""submit"">",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,209,,"<button class=""secondary"" name=""action"" value=""save_matrix_action_and_add"" type=""submit"">",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,210,,"<button class=""secondary"" name=""action"" value=""save_matrix_action_copy"" type=""button"" data-ssh-copy=""action"">",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,211,,"<button class=""secondary"" type=""button"" data-ssh-discard-library>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,212,,"<button class=""danger"" name=""action"" value=""delete_matrix_action"" type=""submit"" formnovalidate data-ssh-action-delete {% if not action_editor.original_name %}hidden{% endif %}>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,218,,"<button type=""button"" class=""secondary"" data-ssh-open-workspace=""hosts"">",,unverified-static-index
+form,twn_toolkit/templates/tools/multi_ssh.html,224,,"<form class=""form multi-ssh-run-form"" id=""multi-ssh-run-form"" method=""post"" autocomplete=""off"" data-multi-ssh data-unsaved-form {% if ssh_job_api %}data-ssh-job-api{% endif %} data-ssh-host-count=""{{ selected_matrix.target_count }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,225,,"<input type=""hidden"" name=""workspace"" value=""run"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,226,,"<input type=""hidden"" name=""matrix_action_run"" value=""on"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,227,,"<input type=""hidden"" name=""host_matrix_original_name"" value=""{{ selected_matrix.name }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,228,,"<input type=""hidden"" name=""mso_kind"" value=""ssh.matrix"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,228,,"<input type=""hidden"" name=""mso_id"" value=""{{ matrix_mso.get('id', '') }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,228,,"<input type=""hidden"" name=""mso_version"" value=""{{ matrix_mso.get('version', '') }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,229,,"<input type=""hidden"" name=""matrix"" value=""{{ form.matrix }}"">",,unverified-static-index
+textarea,twn_toolkit/templates/tools/multi_ssh.html,230,,"<textarea name=""commands"" hidden>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,231,,"<input name=""command_timeout"" type=""hidden"" value=""{{ form.command_timeout }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,232,,"<input name=""preview_token"" type=""hidden"" value=""{{ preview_token }}"" data-ssh-preview-token data-unsaved-ignore>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,234,,"<input type=""hidden"" name=""connection_choices_draft"" value="""" data-ssh-choices-state>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,235,,"<input type=""hidden"" name=""runbook_draft"" value="""" data-ssh-runbook-state>",,unverified-static-index
+textarea,twn_toolkit/templates/tools/multi_ssh.html,236,,"<textarea name=""run_steps"" hidden data-ssh-run-steps>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,238,,"<button class=""secondary"" type=""button"" data-ssh-open-workspace=""actions"" form=""multi-ssh-run-form"">",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,240,,"<button class=""secondary"" name=""action"" type=""submit"" value=""preview"" formnovalidate data-ssh-preview-button>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,244,,"<input name=""username"" value=""{{ form.username }}"" autocomplete=""username"" required>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,244,,"<input name=""password"" type=""password"" autocomplete=""current-password"" required>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,244,,"<input name=""port"" type=""number"" min=""1"" max=""65535"" value=""{{ form.port }}"" data-1p-ignore required>",,unverified-static-index
+details,twn_toolkit/templates/tools/multi_ssh.html,247,,"<details class=""multi-ssh-exact-plan multi-ssh-workspace-card"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,250,,"<input name=""run_name"" maxlength=""100"" value=""{{ form.run_name }}"" placeholder=""{{ form.host_matrix_name or 'Bulk SSH' }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,251,,"<input name=""send_ctrl_y"" type=""checkbox"" {% if form.send_ctrl_y %}checked{% endif %}>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,258,,"<input name=""confirm_execution"" type=""hidden"" value=""on"">",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,259,,"<button class=""secondary"" type=""button"" data-ssh-open-workspace=""actions"" form=""multi-ssh-run-form"">",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,259,,"<button name=""action"" type=""submit"" value=""run"" data-ssh-run-button {% if not preview_token %}disabled{% endif %}>",,unverified-static-index
+form,twn_toolkit/templates/tools/multi_ssh.html,263,,"<form class=""form multi-ssh-run-form"" id=""multi-ssh-run-form"" method=""post"" autocomplete=""off"" data-multi-ssh data-unsaved-form {% if ssh_job_api %}data-ssh-job-api{% endif %} data-ssh-host-count=""{{ preview.plans|length }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,264,,"<input type=""hidden"" name=""workspace"" value=""run"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,265,,"<input type=""hidden"" name=""matrix"" value=""{{ form.matrix }}"">",,unverified-static-index
+textarea,twn_toolkit/templates/tools/multi_ssh.html,266,,"<textarea name=""commands"" hidden>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,267,,"<input name=""command_timeout"" type=""hidden"" value=""{{ form.command_timeout }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,268,,"<input name=""preview_token"" type=""hidden"" value=""{{ preview_token }}"" data-ssh-preview-token data-unsaved-ignore>",,unverified-static-index
+details,twn_toolkit/templates/tools/multi_ssh.html,276,,"<details class=""ssh-preview-host"" {% if loop.first %}open{% endif %}>",,unverified-static-index
 button,twn_toolkit/templates/tools/multi_ssh.html,284,,"<button class=""secondary"" name=""action"" type=""submit"" value=""preview"" formnovalidate data-ssh-preview-button>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,291,,"<input name=""run_name"" maxlength=""100"" value=""{{ form.run_name }}"" placeholder=""{{ form.host_matrix_name or 'Branch switch checks' }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,292,,"<input name=""username"" value=""{{ form.username }}"" autocomplete=""username"" required>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,292,,"<input name=""password"" type=""password"" autocomplete=""current-password"" required>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,292,,"<input name=""port"" type=""number"" min=""1"" max=""65535"" value=""{{ form.port }}"" data-1p-ignore required>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,294,,"<input name=""confirm_execution"" type=""checkbox"" required>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,295,,"<button name=""action"" type=""submit"" value=""run"" data-ssh-run-button>",,unverified-static-index
-form,twn_toolkit/templates/tools/multi_ssh.html,300,,"<form class=""form multi-ssh-run-form"" id=""multi-ssh-run-form"" method=""post"" autocomplete=""off"" data-multi-ssh data-unsaved-form {% if ssh_job_api %}data-ssh-job-api{% endif %} data-ssh-host-count=""{{ preview.plans|length }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,301,,"<input type=""hidden"" name=""workspace"" value=""run"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,302,,"<input type=""hidden"" name=""matrix"" value=""{{ form.matrix }}"">",,unverified-static-index
-textarea,twn_toolkit/templates/tools/multi_ssh.html,303,,"<textarea name=""commands"" hidden>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,304,,"<input name=""command_timeout"" type=""hidden"" value=""{{ form.command_timeout }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,305,,"<input name=""preview_token"" type=""hidden"" value=""{{ preview_token }}"" data-ssh-preview-token>",,unverified-static-index
-details,twn_toolkit/templates/tools/multi_ssh.html,313,,"<details class=""ssh-preview-host"" {% if loop.first %}open{% endif %}>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,321,,"<button class=""secondary"" name=""action"" type=""submit"" value=""preview"" formnovalidate data-ssh-preview-button>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,326,,"<input name=""run_name"" maxlength=""100"" value=""{{ form.run_name }}"" placeholder=""{{ form.host_matrix_name or 'Branch switch checks' }}"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,327,,"<input name=""username"" value=""{{ form.username }}"" autocomplete=""username"" required>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,327,,"<input name=""password"" type=""password"" autocomplete=""current-password"" required>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,327,,"<input name=""port"" type=""number"" min=""1"" max=""65535"" value=""{{ form.port }}"" data-1p-ignore required>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,329,,"<input name=""confirm_execution"" type=""checkbox"" required>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,330,,"<button name=""action"" type=""submit"" value=""run"" data-ssh-run-button>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,335,,"<button type=""button"" class=""secondary"" data-ssh-open-workspace=""actions"">",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,337,,"<button type=""button"" class=""secondary"" data-ssh-open-workspace=""hosts"">",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,349,,"<button class=""secondary"" type=""button"" data-ssh-toggle-all>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,349,,"<button class=""secondary"" type=""button"" data-ssh-download-all>",,unverified-static-index
-details,twn_toolkit/templates/tools/multi_ssh.html,352,,"<details class=""ssh-result"" data-ssh-result data-host=""{{ result.host_label or result.host }}"" data-address=""{{ result.host }}"" data-status=""{{ result.status }}"" {% if result.status != 'success' %}open{% endif %}>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,354,,"<button class=""link-button subtle"" type=""button"" data-ssh-download-host>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,359,,"<button class=""danger compact"" type=""button"" data-ssh-retry-reveal>",,unverified-static-index
-form,twn_toolkit/templates/tools/multi_ssh.html,360,,"<form class=""ssh-host-key-retry-form"" data-ssh-host-key-retry data-url=""{{ url_for('tools.retry_multi_ssh_host_key') }}"" data-retry-token=""{{ result.host_key_retry_token }}"" data-host=""{{ result.host }}"" hidden>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,361,,"<input name=""retry_username"" value=""{{ form.username }}"" autocomplete=""username"" required>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,361,,"<input name=""retry_password"" type=""password"" autocomplete=""current-password"" required>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,363,,"<button class=""secondary compact"" type=""button"" data-ssh-retry-cancel>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,363,,"<button class=""danger compact"" type=""submit"" data-ssh-retry-submit>",,unverified-static-index
-dialog,twn_toolkit/templates/tools/multi_ssh.html,376,,"<dialog class=""remote-terminal-dialog"" data-ssh-copy-dialog aria-labelledby=""ssh-copy-title"">",,unverified-static-index
-form,twn_toolkit/templates/tools/multi_ssh.html,377,,"<form class=""form remote-terminal-dialog-form"" method=""dialog"">",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,380,,"<input name=""copy_name"" maxlength=""100"" required data-ssh-copy-name>",,unverified-static-index
-input,twn_toolkit/templates/tools/multi_ssh.html,381,,"<input type=""checkbox"" checked data-ssh-copy-actions>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,382,,"<button class=""secondary"" type=""button"" data-ssh-copy-cancel>",,unverified-static-index
-button,twn_toolkit/templates/tools/multi_ssh.html,382,,"<button type=""submit"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,289,,"<input name=""run_name"" maxlength=""100"" value=""{{ form.run_name }}"" placeholder=""{{ form.host_matrix_name or 'Branch switch checks' }}"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,290,,"<input name=""username"" value=""{{ form.username }}"" autocomplete=""username"" required>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,290,,"<input name=""password"" type=""password"" autocomplete=""current-password"" required>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,290,,"<input name=""port"" type=""number"" min=""1"" max=""65535"" value=""{{ form.port }}"" data-1p-ignore required>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,292,,"<input name=""confirm_execution"" type=""checkbox"" required>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,293,,"<button name=""action"" type=""submit"" value=""run"" data-ssh-run-button>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,298,,"<button type=""button"" class=""secondary"" data-ssh-open-workspace=""hosts"">",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,310,,"<button class=""secondary"" type=""button"" data-ssh-toggle-all>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,310,,"<button class=""secondary"" type=""button"" data-ssh-download-all>",,unverified-static-index
+details,twn_toolkit/templates/tools/multi_ssh.html,313,,"<details class=""ssh-result"" data-ssh-result data-host=""{{ result.host_label or result.host }}"" data-address=""{{ result.host }}"" data-status=""{{ result.status }}"" {% if result.status != 'success' %}open{% endif %}>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,315,,"<button class=""link-button subtle"" type=""button"" data-ssh-download-host>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,320,,"<button class=""danger compact"" type=""button"" data-ssh-retry-reveal>",,unverified-static-index
+form,twn_toolkit/templates/tools/multi_ssh.html,321,,"<form class=""ssh-host-key-retry-form"" data-ssh-host-key-retry data-url=""{{ url_for('tools.retry_multi_ssh_host_key') }}"" data-retry-token=""{{ result.host_key_retry_token }}"" data-host=""{{ result.host }}"" hidden>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,322,,"<input name=""retry_username"" value=""{{ form.username }}"" autocomplete=""username"" required>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,322,,"<input name=""retry_password"" type=""password"" autocomplete=""current-password"" required>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,324,,"<button class=""secondary compact"" type=""button"" data-ssh-retry-cancel>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,324,,"<button class=""danger compact"" type=""submit"" data-ssh-retry-submit>",,unverified-static-index
+dialog,twn_toolkit/templates/tools/multi_ssh.html,337,,"<dialog class=""remote-terminal-dialog"" data-ssh-copy-dialog aria-labelledby=""ssh-copy-title"">",,unverified-static-index
+form,twn_toolkit/templates/tools/multi_ssh.html,338,,"<form class=""form remote-terminal-dialog-form"" method=""dialog"">",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,341,,"<input name=""copy_name"" maxlength=""100"" required data-ssh-copy-name>",,unverified-static-index
+input,twn_toolkit/templates/tools/multi_ssh.html,342,,"<input type=""checkbox"" checked data-ssh-copy-actions>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,343,,"<button class=""secondary"" type=""button"" data-ssh-copy-cancel>",,unverified-static-index
+button,twn_toolkit/templates/tools/multi_ssh.html,343,,"<button type=""submit"">",,unverified-static-index
 template,twn_toolkit/templates/tools/multicast.html,1,multicast,,,unverified-static-index
 button,twn_toolkit/templates/tools/multicast.html,12,,"<button type=""submit"" form=""multicast-form"">",,unverified-static-index
 button,twn_toolkit/templates/tools/multicast.html,13,,"<button class=""secondary"" type=""button"" data-tool-settings-open aria-controls=""multicast-settings"" aria-expanded=""false"">",,unverified-static-index
@@ -2767,7 +2793,7 @@ handler,twn_toolkit/static/automation.js,404,change,,,unverified-static-index
 handler,twn_toolkit/static/automation.js,417,change,,,unverified-static-index
 handler,twn_toolkit/static/automation.js,423,click,,,unverified-static-index
 handler,twn_toolkit/static/bulk-ssh-jobs.js,12,submit,,,unverified-static-index
-handler,twn_toolkit/static/bulk-ssh-jobs.js,56,pagehide,,,unverified-static-index
+handler,twn_toolkit/static/bulk-ssh-jobs.js,59,pagehide,,,unverified-static-index
 handler,twn_toolkit/static/case-note.js,14,click,,,unverified-static-index
 handler,twn_toolkit/static/case-note.js,20,click,,,unverified-static-index
 handler,twn_toolkit/static/case-note.js,21,click,,,unverified-static-index
@@ -2881,29 +2907,39 @@ handler,twn_toolkit/static/multi-ssh-export.js,81,click,,,unverified-static-inde
 handler,twn_toolkit/static/multi-ssh-export.js,93,click,,,unverified-static-index
 handler,twn_toolkit/static/multi-ssh-export.js,98,click,,,unverified-static-index
 handler,twn_toolkit/static/multi-ssh-export.js,104,submit,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,25,click,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,29,keydown,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,44,click,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,52,change,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,108,change,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,109,click,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,113,input,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,114,submit,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,121,click,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,127,click,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,154,input,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,155,click,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,187,submit,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,209,click,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,222,click,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,238,click,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,239,close,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,251,submit,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,277,submit,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,397,change,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,401,click,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,410,click,,,unverified-static-index
-handler,twn_toolkit/static/multi-ssh.js,433,submit,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,26,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,30,keydown,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,45,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,53,change,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,110,change,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,111,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,115,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,123,input,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,124,submit,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,131,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,137,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,164,input,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,165,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,197,submit,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,219,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,232,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,248,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,249,close,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,261,submit,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,287,submit,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,386,change,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,465,input,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,563,change,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,567,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,578,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,605,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,654,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,660,click,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,666,input,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,670,input,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,673,twn:ssh-library-draft,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,674,twn:ssh-workspace,,,unverified-static-index
+handler,twn_toolkit/static/multi-ssh.js,678,submit,,,unverified-static-index
 handler,twn_toolkit/static/multicast.js,111,change,,,unverified-static-index
 handler,twn_toolkit/static/multicast.js,112,change,,,unverified-static-index
 handler,twn_toolkit/static/multicast.js,113,change,,,unverified-static-index
