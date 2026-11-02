@@ -136,7 +136,8 @@ def test_browser_fixture_has_real_retained_results_and_controlled_failures(tmp_p
     assert counts['submit'] == 1 and counts['cancel'] == 1
 
 
-def test_recent_is_one_snapshot_during_worker_completion(continuity, monkeypatch):
+@pytest.mark.parametrize("include_summary", [False, True])
+def test_recent_is_one_snapshot_during_worker_completion(continuity, monkeypatch, include_summary):
     from contextlib import contextmanager
     app, client, store = continuity
     job_id = store.enqueue(user_id='owner', tool='dns', config={})
@@ -151,7 +152,7 @@ def test_recent_is_one_snapshot_during_worker_completion(continuity, monkeypatch
         def execute(self, sql, parameters=()):
             nonlocal triggered
             cursor = self.db.execute(sql, parameters)
-            if 'SELECT id,state,created FROM diagnostic_jobs' in sql:
+            if sql.lstrip().startswith('WITH active AS') or sql.lstrip().startswith('SELECT id,state,created'):
                 statements.append(sql)
                 if not triggered:
                     triggered = True
@@ -165,7 +166,7 @@ def test_recent_is_one_snapshot_during_worker_completion(continuity, monkeypatch
             yield Connection(db)
 
     monkeypatch.setattr(store, 'connect', concurrent_connect)
-    rows = store.recent('owner', 'dns')
+    rows = store.recent('owner', 'dns', include_summary=include_summary)
     assert triggered
     assert len(statements) == 1
     assert len(rows) == 1 and rows[0]['id'] == job_id

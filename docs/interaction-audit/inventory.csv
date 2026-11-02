@@ -284,45 +284,46 @@ route,twn_toolkit/radius_routes.py,182,save_radius_profile,'/radius-test/profile
 route,twn_toolkit/radius_routes.py,253,delete_radius_profile,'/radius-test/profiles/<kind>/delete',POST,unverified-static-index
 route,twn_toolkit/radius_routes.py,276,duplicate_radius_profile,'/radius-test/profiles/<kind>/duplicate',POST,unverified-static-index
 route,twn_toolkit/remote_terminal_routes.py,74,remote_terminal,'/remote-terminal',GET,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,90,remote_terminal_library,'/remote-terminal/library',GET,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,96,remote_terminal_devices,'/remote-terminal/devices',GET,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,106,remote_terminal_popout,'/remote-terminal/sessions/<session_id>/popout',GET,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,124,start_remote_terminal_session,'/remote-terminal/sessions',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,313,create_remote_terminal_folder,'/remote-terminal/folders',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,351,update_remote_terminal_folder,'/remote-terminal/folders/<folder_id>',PATCH,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,388,duplicate_remote_terminal_folder,'/remote-terminal/folders/<folder_id>/duplicate',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,403,delete_remote_terminal_folder,'/remote-terminal/folders/<folder_id>',DELETE,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,421,create_remote_terminal_credential,'/remote-terminal/credentials',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,426,update_remote_terminal_credential,'/remote-terminal/credentials/<credential_id>',PATCH,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,431,duplicate_remote_terminal_credential,'/remote-terminal/credentials/<credential_id>/duplicate',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,449,delete_remote_terminal_credential,'/remote-terminal/credentials/<credential_id>',DELETE,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,482,create_remote_terminal_host,'/remote-terminal/hosts',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,487,preview_remote_terminal_host_import,'/remote-terminal/hosts/import/preview',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,494,import_remote_terminal_hosts,'/remote-terminal/hosts/import',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,533,bulk_update_remote_terminal_library,'/remote-terminal/library/bulk',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,581,update_remote_terminal_host,'/remote-terminal/hosts/<host_id>',PATCH,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,586,duplicate_remote_terminal_host,'/remote-terminal/hosts/<host_id>/duplicate',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,604,delete_remote_terminal_host,'/remote-terminal/hosts/<host_id>',DELETE,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,619,remote_terminal_session,'/remote-terminal/sessions/<session_id>',GET,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,629,remote_terminal_output,'/remote-terminal/sessions/<session_id>/output',GET,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,650,save_remote_terminal_checkpoint,'/remote-terminal/sessions/<session_id>/checkpoint',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,681,download_remote_terminal_scrollback,'/remote-terminal/sessions/<session_id>/download',GET,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,722,attach_remote_terminal_case,'/remote-terminal/sessions/<session_id>/case',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,767,save_remote_terminal_scrollback,'/remote-terminal/sessions/<session_id>/datastore',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,839,delete_remote_terminal_scrollback,'/remote-terminal/sessions/<session_id>',DELETE,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,868,remote_terminal_input,'/remote-terminal/sessions/<session_id>/input',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,881,remote_terminal_credential,'/remote-terminal/sessions/<session_id>/credential',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,895,resize_remote_terminal_session,'/remote-terminal/sessions/<session_id>/resize',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,912,stop_remote_terminal_session,'/remote-terminal/sessions/<session_id>/stop',POST,unverified-static-index
-route,twn_toolkit/remote_terminal_routes.py,945,rename_remote_terminal_session,'/remote-terminal/sessions/<session_id>/rename',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,88,remote_terminal_library,'/remote-terminal/library',GET,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,94,remote_terminal_sessions,'/remote-terminal/sessions',GET,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,103,remote_terminal_devices,'/remote-terminal/devices',GET,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,113,remote_terminal_popout,'/remote-terminal/sessions/<session_id>/popout',GET,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,131,start_remote_terminal_session,'/remote-terminal/sessions',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,320,create_remote_terminal_folder,'/remote-terminal/folders',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,358,update_remote_terminal_folder,'/remote-terminal/folders/<folder_id>',PATCH,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,395,duplicate_remote_terminal_folder,'/remote-terminal/folders/<folder_id>/duplicate',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,410,delete_remote_terminal_folder,'/remote-terminal/folders/<folder_id>',DELETE,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,428,create_remote_terminal_credential,'/remote-terminal/credentials',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,433,update_remote_terminal_credential,'/remote-terminal/credentials/<credential_id>',PATCH,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,438,duplicate_remote_terminal_credential,'/remote-terminal/credentials/<credential_id>/duplicate',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,456,delete_remote_terminal_credential,'/remote-terminal/credentials/<credential_id>',DELETE,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,489,create_remote_terminal_host,'/remote-terminal/hosts',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,494,preview_remote_terminal_host_import,'/remote-terminal/hosts/import/preview',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,501,import_remote_terminal_hosts,'/remote-terminal/hosts/import',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,540,bulk_update_remote_terminal_library,'/remote-terminal/library/bulk',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,588,update_remote_terminal_host,'/remote-terminal/hosts/<host_id>',PATCH,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,593,duplicate_remote_terminal_host,'/remote-terminal/hosts/<host_id>/duplicate',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,611,delete_remote_terminal_host,'/remote-terminal/hosts/<host_id>',DELETE,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,626,remote_terminal_session,'/remote-terminal/sessions/<session_id>',GET,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,636,remote_terminal_output,'/remote-terminal/sessions/<session_id>/output',GET,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,657,save_remote_terminal_checkpoint,'/remote-terminal/sessions/<session_id>/checkpoint',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,688,download_remote_terminal_scrollback,'/remote-terminal/sessions/<session_id>/download',GET,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,729,attach_remote_terminal_case,'/remote-terminal/sessions/<session_id>/case',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,774,save_remote_terminal_scrollback,'/remote-terminal/sessions/<session_id>/datastore',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,846,delete_remote_terminal_scrollback,'/remote-terminal/sessions/<session_id>',DELETE,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,875,remote_terminal_input,'/remote-terminal/sessions/<session_id>/input',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,888,remote_terminal_credential,'/remote-terminal/sessions/<session_id>/credential',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,902,resize_remote_terminal_session,'/remote-terminal/sessions/<session_id>/resize',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,919,stop_remote_terminal_session,'/remote-terminal/sessions/<session_id>/stop',POST,unverified-static-index
+route,twn_toolkit/remote_terminal_routes.py,952,rename_remote_terminal_session,'/remote-terminal/sessions/<session_id>/rename',POST,unverified-static-index
 route,twn_toolkit/rename_routes.py,86,rename_job,'/tasks/<task_id>/rename-jobs/<job_id>',GET,unverified-static-index
 route,twn_toolkit/rename_routes.py,107,rename_job_status,'/tasks/<task_id>/rename-jobs/<job_id>/status',GET,unverified-static-index
 route,twn_toolkit/rename_routes.py,115,rename_job_cancel,'/tasks/<task_id>/rename-jobs/<job_id>/cancel',POST,unverified-static-index
-route,twn_toolkit/sftp_routes.py,21,multi_transfer,'/multi-transfer',"['GET', 'POST']",unverified-static-index
-route,twn_toolkit/sftp_routes.py,75,transfer_job_status,'/multi-transfer/jobs/<job_id>/status',GET,unverified-static-index
-route,twn_toolkit/sftp_routes.py,82,cancel_transfer_job,'/multi-transfer/jobs/<job_id>/cancel',POST,unverified-static-index
-route,twn_toolkit/sftp_routes.py,93,download_transfer_job,'/multi-transfer/jobs/<job_id>/download',GET,unverified-static-index
-route,twn_toolkit/sftp_routes.py,109,multi_sftp,'/multi-sftp',"['GET', 'POST']",unverified-static-index
+route,twn_toolkit/sftp_routes.py,23,multi_transfer,'/multi-transfer',"['GET', 'POST']",unverified-static-index
+route,twn_toolkit/sftp_routes.py,95,transfer_job_status,'/multi-transfer/jobs/<job_id>/status',GET,unverified-static-index
+route,twn_toolkit/sftp_routes.py,105,cancel_transfer_job,'/multi-transfer/jobs/<job_id>/cancel',POST,unverified-static-index
+route,twn_toolkit/sftp_routes.py,116,download_transfer_job,'/multi-transfer/jobs/<job_id>/download',GET,unverified-static-index
+route,twn_toolkit/sftp_routes.py,132,multi_sftp,'/multi-sftp',"['GET', 'POST']",unverified-static-index
 route,twn_toolkit/snmp_routes.py,93,snmp_test,'/snmp-test',"['GET', 'POST']",unverified-static-index
 route,twn_toolkit/snmp_routes.py,228,save_snmp_profile,'/snmp-test/profiles/<kind>',POST,unverified-static-index
 route,twn_toolkit/snmp_routes.py,329,delete_snmp_profile,'/snmp-test/profiles/<kind>/delete',POST,unverified-static-index
@@ -1030,9 +1031,10 @@ button,twn_toolkit/templates/base.html,427,,"<button class=""secondary"" type=""
 button,twn_toolkit/templates/base.html,428,,"<button type=""submit"">",,unverified-static-index
 button,twn_toolkit/templates/base.html,448,,"<button class=""live-tool-tray-toggle"" id=""live-tool-tray-toggle"" type=""button"" aria-expanded=""true"" aria-controls=""live-tool-tray-body"" >",,unverified-static-index
 template,twn_toolkit/templates/components/diagnostic_job.html,1,diagnostic_job,,,unverified-static-index
-form,twn_toolkit/templates/components/diagnostic_job.html,8,,"<form method=""post"" action=""{{ diagnostic_cancel_url or url_for(diagnostic_cancel_endpoint, job_id=diagnostic_job.id) }}"">",,unverified-static-index
-button,twn_toolkit/templates/components/diagnostic_job.html,8,,"<button type=""submit"" class=""secondary"">",,unverified-static-index
-a,twn_toolkit/templates/components/diagnostic_job.html,10,,"<a href=""{{ diagnostic_result_url or url_for(diagnostic_result_endpoint, job=diagnostic_job.id) }}"">",,unverified-static-index
+form,twn_toolkit/templates/components/diagnostic_job.html,9,,"<form data-diagnostic-cancel method=""post"" action=""{{ diagnostic_cancel_url or url_for(diagnostic_cancel_endpoint, job_id=diagnostic_job.id) }}"">",,unverified-static-index
+button,twn_toolkit/templates/components/diagnostic_job.html,9,,"<button type=""submit"" class=""secondary"">",,unverified-static-index
+a,twn_toolkit/templates/components/diagnostic_job.html,11,,"<a class=""button-link secondary"" data-diagnostic-result-link href=""{{ diagnostic_result_url or url_for(diagnostic_result_endpoint, job=diagnostic_job.id) }}"" target=""_blank"" rel=""noopener"">",,unverified-static-index
+a,twn_toolkit/templates/components/diagnostic_job.html,13,,"<a href=""{{ diagnostic_result_url or url_for(diagnostic_result_endpoint, job=diagnostic_job.id) }}"">",,unverified-static-index
 template,twn_toolkit/templates/components/fabric_results.html,1,fabric_results,,,unverified-static-index
 details,twn_toolkit/templates/components/fabric_results.html,2,,"<details class=""fabric-result"">",,unverified-static-index
 template,twn_toolkit/templates/components/fabric_selector.html,1,fabric_selector,,,unverified-static-index
@@ -1045,10 +1047,10 @@ template,twn_toolkit/templates/components/mso.html,1,mso,,,unverified-static-ind
 input,twn_toolkit/templates/components/mso.html,4,,"<input type=""checkbox"" name=""mso_toggle"" role=""switch"" data-mso-switch aria-label=""Mainframe synced object"">",,unverified-static-index
 a,twn_toolkit/templates/components/mso.html,5,,"<a class=""button-link secondary mso-list-attention"" href=""{{ url_for('tools.mso_conflicts') }}"" data-mso-attention hidden>",,unverified-static-index
 template,twn_toolkit/templates/components/recent_runs.html,1,recent_runs,,,unverified-static-index
-details,twn_toolkit/templates/components/recent_runs.html,26,,"<details class=""panel recent-runs"" data-recent-runs>",,unverified-static-index
-a,twn_toolkit/templates/components/recent_runs.html,35,,"<a class=""recent-run-view"" href=""{{ item.url }}"" aria-label=""View {{ item.name }} · {{ item.when }}"">",,unverified-static-index
-form,twn_toolkit/templates/components/recent_runs.html,36,,"<form method=""post"" action=""{{ item.delete_url }}"" onsubmit=""return confirm('Delete this failed ACME request?');"">",,unverified-static-index
-button,twn_toolkit/templates/components/recent_runs.html,36,,"<button class=""text-danger"" type=""submit"">",,unverified-static-index
+details,twn_toolkit/templates/components/recent_runs.html,32,,"<details class=""panel recent-runs"" data-recent-runs>",,unverified-static-index
+a,twn_toolkit/templates/components/recent_runs.html,41,,"<a class=""recent-run-view"" href=""{{ item.url }}"" aria-label=""View {{ 'progress' if item.state in active_states else 'result' }} for {{ item.name }} · {{ item.when }}"">",,unverified-static-index
+form,twn_toolkit/templates/components/recent_runs.html,42,,"<form method=""post"" action=""{{ item.delete_url }}"" onsubmit=""return confirm('Delete this failed ACME request?');"">",,unverified-static-index
+button,twn_toolkit/templates/components/recent_runs.html,42,,"<button class=""text-danger"" type=""submit"">",,unverified-static-index
 template,twn_toolkit/templates/components/tool_cards.html,1,tool_cards,,,unverified-static-index
 a,twn_toolkit/templates/components/tool_cards.html,5,,"<a class=""launch-card-link"" href=""{{ url_for(tool.endpoint, **tool.endpoint_values) }}"">",,unverified-static-index
 form,twn_toolkit/templates/components/tool_cards.html,14,,"<form class=""favorite-form"" method=""post"" action=""{{ url_for('toggle_tool_favorite', tool_id=tool.id) }}"">",,unverified-static-index
@@ -1070,7 +1072,7 @@ a,twn_toolkit/templates/exports/job.html,24,,"<a class=""button-link secondary""
 a,twn_toolkit/templates/exports/job.html,26,,"<a class=""button-link secondary"" href=""{{ url_for('backup_settings') }}"">",,unverified-static-index
 a,twn_toolkit/templates/exports/job.html,28,,"<a class=""button-link secondary"" href=""{{ url_for('automations') }}"">",,unverified-static-index
 template,twn_toolkit/templates/fortiap_client_history.html,1,fortiap_client_history,,,unverified-static-index
-form,twn_toolkit/templates/fortiap_client_history.html,21,,"<form class=""form"" data-fabric-form method=""post"" action=""{{ url_for('fortiap_client_history') }}"" data-loading-message=""Queueing wireless history lookup…"">",,unverified-static-index
+form,twn_toolkit/templates/fortiap_client_history.html,21,,"<form class=""form"" data-fabric-form data-unsaved-form id=""wireless-history-form"" method=""post"" action=""{{ url_for('fortiap_client_history') }}"" data-loading-message=""Queueing wireless history lookup…"">",,unverified-static-index
 select,twn_toolkit/templates/fortiap_client_history.html,25,,"<select name=""profile"" required>",,unverified-static-index
 input,twn_toolkit/templates/fortiap_client_history.html,35,,"<input name=""mac"" value=""{{ mac }}"" placeholder=""aa:bb:cc:dd:ee:ff"" required>",,unverified-static-index
 select,twn_toolkit/templates/fortiap_client_history.html,39,,"<select name=""hours"">",,unverified-static-index
@@ -1108,7 +1110,7 @@ button,twn_toolkit/templates/fortiauthenticator/index.html,127,,"<button type=""
 button,twn_toolkit/templates/fortiauthenticator/index.html,128,,"<button class=""secondary duplicate-action"" type=""button"" data-profile-duplicate=""{{ url_for('duplicate_fortiauthenticator_profile', name=profile.name) }}"" data-profile-name=""{{ profile.name }}"">",,unverified-static-index
 button,twn_toolkit/templates/fortiauthenticator/index.html,129,,"<button class=""danger"" type=""submit"" formaction=""{{ url_for('delete_fortiauthenticator_profile', name=profile.name) }}"" value=""delete"" data-mso-delete >",,unverified-static-index
 template,twn_toolkit/templates/fortiauthenticator/mac_cleanup.html,1,mac_cleanup,,,unverified-static-index
-form,twn_toolkit/templates/fortiauthenticator/mac_cleanup.html,13,,"<form class=""form"" method=""post"" action=""{{ url_for('fortiauthenticator_mac_cleanup') }}"" data-loading-message=""Building MAC cleanup preview…"">",,unverified-static-index
+form,twn_toolkit/templates/fortiauthenticator/mac_cleanup.html,13,,"<form class=""form"" data-unsaved-form id=""fac-cleanup-form"" method=""post"" action=""{{ url_for('fortiauthenticator_mac_cleanup') }}"" data-loading-message=""Building MAC cleanup preview…"">",,unverified-static-index
 select,twn_toolkit/templates/fortiauthenticator/mac_cleanup.html,17,,"<select name=""profile"" required>",,unverified-static-index
 select,twn_toolkit/templates/fortiauthenticator/mac_cleanup.html,30,,"<select name=""group_uri"" required>",,unverified-static-index
 input,twn_toolkit/templates/fortiauthenticator/mac_cleanup.html,42,,"<input name=""action"" type=""radio"" value=""remove_memberships"" {% if selected_action == ""remove_memberships"" %}checked{% endif %} >",,unverified-static-index
@@ -1138,7 +1140,7 @@ template,twn_toolkit/templates/fortiauthenticator/mac_cleanup_results.html,1,mac
 a,twn_toolkit/templates/fortiauthenticator/mac_cleanup_results.html,39,,"<a class=""button-link"" href=""{{ url_for('fortiauthenticator_mac_cleanup') }}"">",,unverified-static-index
 a,twn_toolkit/templates/fortiauthenticator/mac_cleanup_results.html,40,,"<a class=""button-link secondary"" href=""{{ url_for('fortiauthenticator_home') }}"">",,unverified-static-index
 template,twn_toolkit/templates/fortiauthenticator/mac_devices.html,1,mac_devices,,,unverified-static-index
-form,twn_toolkit/templates/fortiauthenticator/mac_devices.html,15,,"<form class=""form"" method=""post"" action=""{{ url_for('fortiauthenticator_mac_devices') }}"" data-loading-message=""Queueing FortiAuthenticator MAC devices…"" >",,unverified-static-index
+form,twn_toolkit/templates/fortiauthenticator/mac_devices.html,15,,"<form class=""form"" data-unsaved-form id=""fac-devices-form"" method=""post"" action=""{{ url_for('fortiauthenticator_mac_devices') }}"" data-loading-message=""Queueing FortiAuthenticator MAC devices…"" >",,unverified-static-index
 select,twn_toolkit/templates/fortiauthenticator/mac_devices.html,23,,"<select name=""profile"" required>",,unverified-static-index
 select,twn_toolkit/templates/fortiauthenticator/mac_devices.html,35,,"<select name=""csv_format"">",,unverified-static-index
 button,twn_toolkit/templates/fortiauthenticator/mac_devices.html,42,,"<button class=""secondary"" type=""submit"">",,unverified-static-index
@@ -1149,7 +1151,7 @@ a,twn_toolkit/templates/fortiauthenticator/mac_devices.html,65,,"<a class=""butt
 a,twn_toolkit/templates/fortiauthenticator/mac_devices.html,67,,"<a class=""button-link secondary"" href=""{{ url_for(diagnostic_result_endpoint, job=diagnostic_job.id, page=result_page-1) }}"">",,unverified-static-index
 a,twn_toolkit/templates/fortiauthenticator/mac_devices.html,69,,"<a class=""button-link secondary"" href=""{{ url_for(diagnostic_result_endpoint, job=diagnostic_job.id, page=result_page+1) }}"">",,unverified-static-index
 template,twn_toolkit/templates/fortiauthenticator/mac_group_memberships.html,1,mac_group_memberships,,,unverified-static-index
-form,twn_toolkit/templates/fortiauthenticator/mac_group_memberships.html,15,,"<form class=""form"" method=""post"" action=""{{ url_for('fortiauthenticator_mac_group_memberships') }}"" data-loading-message=""Queueing FortiAuthenticator group memberships…"" >",,unverified-static-index
+form,twn_toolkit/templates/fortiauthenticator/mac_group_memberships.html,15,,"<form class=""form"" data-unsaved-form id=""fac-memberships-form"" method=""post"" action=""{{ url_for('fortiauthenticator_mac_group_memberships') }}"" data-loading-message=""Queueing FortiAuthenticator group memberships…"" >",,unverified-static-index
 select,twn_toolkit/templates/fortiauthenticator/mac_group_memberships.html,23,,"<select name=""profile"" required>",,unverified-static-index
 select,twn_toolkit/templates/fortiauthenticator/mac_group_memberships.html,35,,"<select name=""csv_format"">",,unverified-static-index
 button,twn_toolkit/templates/fortiauthenticator/mac_group_memberships.html,42,,"<button class=""secondary"" type=""submit"">",,unverified-static-index
@@ -1162,7 +1164,7 @@ a,twn_toolkit/templates/fortiauthenticator/mac_group_memberships.html,69,,"<a cl
 template,twn_toolkit/templates/fortigate_dhcp.html,1,fortigate_dhcp,,,unverified-static-index
 details,twn_toolkit/templates/fortigate_dhcp.html,8,,"<details class=""panel dhcp-new-discovery"">",,unverified-static-index
 a,twn_toolkit/templates/fortigate_dhcp.html,9,,"<a class=""button-link secondary"" href=""{{ url_for('fortigate_home') }}"">",,unverified-static-index
-form,twn_toolkit/templates/fortigate_dhcp.html,10,,"<form method=""post"" action=""{{ url_for('fortigate_dhcp') }}"" class=""form dhcp-discovery"" data-loading-message=""Queueing DHCP discovery…"">",,unverified-static-index
+form,twn_toolkit/templates/fortigate_dhcp.html,10,,"<form method=""post"" action=""{{ url_for('fortigate_dhcp') }}"" class=""form dhcp-discovery"" data-unsaved-form id=""dhcp-discovery-form"" data-loading-message=""Queueing DHCP discovery…"">",,unverified-static-index
 select,twn_toolkit/templates/fortigate_dhcp.html,11,,"<select name=""profile"" required>",,unverified-static-index
 select,twn_toolkit/templates/fortigate_dhcp.html,12,,"<select name=""scope"">",,unverified-static-index
 input,twn_toolkit/templates/fortigate_dhcp.html,13,,"<input name=""vdom"" value=""{{ vdom }}"" maxlength=""80"" placeholder=""Profile default"">",,unverified-static-index
@@ -1185,7 +1187,7 @@ a,twn_toolkit/templates/fortigate_dhcp.html,77,,"<a class=""button-link secondar
 a,twn_toolkit/templates/fortigate_dhcp.html,78,,"<a class=""button-link secondary dhcp-load-gate"" href=""{{ url_for('fortigate_dhcp',job=diagnostic_job.id,view=view,device=gate.serial,q=q) }}"">",,unverified-static-index
 template,twn_toolkit/templates/fortigate_loop.html,1,fortigate_loop,,,unverified-static-index
 details,twn_toolkit/templates/fortigate_loop.html,8,,"<details class=""panel"">",,unverified-static-index
-form,twn_toolkit/templates/fortigate_loop.html,9,,"<form class=""form loop-scan"" method=""post"" action=""{{ url_for('fortigate_loop') }}"" data-loading-message=""Queueing switch inspection…"">",,unverified-static-index
+form,twn_toolkit/templates/fortigate_loop.html,9,,"<form class=""form loop-scan"" data-unsaved-form id=""loop-scan-form"" method=""post"" action=""{{ url_for('fortigate_loop') }}"" data-loading-message=""Queueing switch inspection…"">",,unverified-static-index
 select,twn_toolkit/templates/fortigate_loop.html,10,,"<select name=""profile"" required>",,unverified-static-index
 select,twn_toolkit/templates/fortigate_loop.html,11,,"<select name=""scope"">",,unverified-static-index
 input,twn_toolkit/templates/fortigate_loop.html,12,,"<input name=""vdom"" value=""{{ vdom }}"" placeholder=""Profile default"" maxlength=""80"">",,unverified-static-index
@@ -1684,36 +1686,37 @@ button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,37,,"<button 
 a,twn_toolkit/templates/tools/_remote_terminal_workspace.html,39,,"<a id=""remote-terminal-transcript-view"" href=""#"" target=""_blank"" rel=""noopener"" hidden role=""menuitem"">",,unverified-static-index
 a,twn_toolkit/templates/tools/_remote_terminal_workspace.html,40,,"<a id=""remote-terminal-download"" href=""#"" download hidden role=""menuitem"">",,unverified-static-index
 button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,42,,"<button class=""danger"" id=""remote-terminal-delete"" type=""button"" hidden role=""menuitem"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,46,,"<button class=""secondary compact"" id=""remote-terminal-stop"" type=""button"">",,unverified-static-index
-textarea,twn_toolkit/templates/tools/_remote_terminal_workspace.html,56,,"<textarea class=""remote-terminal-input-capture"" id=""remote-terminal-input-capture"" rows=""1"" aria-label=""Remote terminal keyboard input"" aria-describedby=""remote-terminal-input-help"" autocomplete=""off"" autocapitalize=""none"" autocorrect=""off"" spellcheck=""false"" >",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,70,,"<button class=""remote-terminal-jump-live"" id=""remote-terminal-jump-live"" type=""button"" hidden>",,unverified-static-index
-select,twn_toolkit/templates/tools/_remote_terminal_workspace.html,78,,"<select id=""remote-terminal-width"" aria-label=""Shared terminal width"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,85,,"<button class=""remote-terminal-height-resizer"" id=""remote-terminal-height-resizer"" type=""button"" role=""separator"" aria-label=""Resize terminal height"" aria-orientation=""horizontal"" aria-valuemin=""260"" aria-valuemax=""1000"" aria-valuenow=""500"" title=""Drag to resize terminal; double-click to reset"" >",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,105,,"<button class=""secondary"" type=""button"" data-telnet-credential=""username"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,106,,"<button class=""secondary"" type=""button"" data-telnet-credential=""password"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,109,,"<button class=""secondary"" type=""button"" data-terminal-key=""ctrl-c"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,110,,"<button class=""secondary"" type=""button"" data-terminal-key=""paste"" aria-label=""Paste from clipboard"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,111,,"<button class=""secondary"" type=""button"" data-terminal-key=""ctrl-y"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,112,,"<button class=""secondary"" type=""button"" data-terminal-key=""ctrl-d"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,113,,"<button class=""secondary"" type=""button"" data-terminal-key=""backspace"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,114,,"<button class=""secondary"" type=""button"" data-terminal-key=""tab"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,115,,"<button class=""secondary"" type=""button"" data-terminal-key=""up"" aria-label=""Up arrow"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,116,,"<button class=""secondary"" type=""button"" data-terminal-key=""down"" aria-label=""Down arrow"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,117,,"<button class=""secondary"" type=""button"" data-terminal-key=""left"" aria-label=""Left arrow"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,118,,"<button class=""secondary"" type=""button"" data-terminal-key=""right"" aria-label=""Right arrow"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,119,,"<button class=""secondary"" type=""button"" data-terminal-key=""escape"">",,unverified-static-index
-dialog,twn_toolkit/templates/tools/_remote_terminal_workspace.html,124,,"<dialog class=""remote-terminal-dialog remote-terminal-rename-dialog"" id=""remote-terminal-rename-dialog"" aria-labelledby=""remote-terminal-rename-title"">",,unverified-static-index
-form,twn_toolkit/templates/tools/_remote_terminal_workspace.html,125,,"<form class=""form remote-terminal-dialog-form"" id=""remote-terminal-rename-form"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,128,,"<button class=""dialog-close"" id=""remote-terminal-rename-dismiss"" type=""button"" aria-label=""Close"">",,unverified-static-index
-input,twn_toolkit/templates/tools/_remote_terminal_workspace.html,131,,"<input id=""remote-terminal-rename-input"" type=""text"" maxlength=""100"" required autocomplete=""off"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,134,,"<button class=""secondary"" id=""remote-terminal-rename-cancel"" type=""button"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,135,,"<button id=""remote-terminal-rename-save"" type=""submit"">",,unverified-static-index
-dialog,twn_toolkit/templates/tools/_remote_terminal_workspace.html,141,,"<dialog class=""remote-terminal-dialog remote-terminal-datastore-dialog"" id=""remote-terminal-datastore-dialog"" aria-labelledby=""remote-terminal-datastore-title"">",,unverified-static-index
-form,twn_toolkit/templates/tools/_remote_terminal_workspace.html,142,,"<form class=""form remote-terminal-dialog-form"" id=""remote-terminal-datastore-form"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,145,,"<button class=""dialog-close"" id=""remote-terminal-datastore-dismiss"" type=""button"" aria-label=""Close"">",,unverified-static-index
-select,twn_toolkit/templates/tools/_remote_terminal_workspace.html,149,,"<select id=""remote-terminal-datastore-folder"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,155,,"<button class=""secondary"" id=""remote-terminal-datastore-cancel"" type=""button"">",,unverified-static-index
-button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,156,,"<button id=""remote-terminal-datastore-save"" type=""submit"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,46,,"<button class=""secondary compact"" id=""remote-terminal-connect-again"" type=""button"" hidden>",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,47,,"<button class=""secondary compact"" id=""remote-terminal-stop"" type=""button"">",,unverified-static-index
+textarea,twn_toolkit/templates/tools/_remote_terminal_workspace.html,57,,"<textarea class=""remote-terminal-input-capture"" id=""remote-terminal-input-capture"" rows=""1"" aria-label=""Remote terminal keyboard input"" aria-describedby=""remote-terminal-input-help"" autocomplete=""off"" autocapitalize=""none"" autocorrect=""off"" spellcheck=""false"" >",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,71,,"<button class=""remote-terminal-jump-live"" id=""remote-terminal-jump-live"" type=""button"" hidden>",,unverified-static-index
+select,twn_toolkit/templates/tools/_remote_terminal_workspace.html,79,,"<select id=""remote-terminal-width"" aria-label=""Shared terminal width"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,86,,"<button class=""remote-terminal-height-resizer"" id=""remote-terminal-height-resizer"" type=""button"" role=""separator"" aria-label=""Resize terminal height"" aria-orientation=""horizontal"" aria-valuemin=""260"" aria-valuemax=""1000"" aria-valuenow=""500"" title=""Drag to resize terminal; double-click to reset"" >",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,106,,"<button class=""secondary"" type=""button"" data-telnet-credential=""username"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,107,,"<button class=""secondary"" type=""button"" data-telnet-credential=""password"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,110,,"<button class=""secondary"" type=""button"" data-terminal-key=""ctrl-c"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,111,,"<button class=""secondary"" type=""button"" data-terminal-key=""paste"" aria-label=""Paste from clipboard"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,112,,"<button class=""secondary"" type=""button"" data-terminal-key=""ctrl-y"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,113,,"<button class=""secondary"" type=""button"" data-terminal-key=""ctrl-d"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,114,,"<button class=""secondary"" type=""button"" data-terminal-key=""backspace"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,115,,"<button class=""secondary"" type=""button"" data-terminal-key=""tab"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,116,,"<button class=""secondary"" type=""button"" data-terminal-key=""up"" aria-label=""Up arrow"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,117,,"<button class=""secondary"" type=""button"" data-terminal-key=""down"" aria-label=""Down arrow"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,118,,"<button class=""secondary"" type=""button"" data-terminal-key=""left"" aria-label=""Left arrow"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,119,,"<button class=""secondary"" type=""button"" data-terminal-key=""right"" aria-label=""Right arrow"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,120,,"<button class=""secondary"" type=""button"" data-terminal-key=""escape"">",,unverified-static-index
+dialog,twn_toolkit/templates/tools/_remote_terminal_workspace.html,125,,"<dialog class=""remote-terminal-dialog remote-terminal-rename-dialog"" id=""remote-terminal-rename-dialog"" aria-labelledby=""remote-terminal-rename-title"">",,unverified-static-index
+form,twn_toolkit/templates/tools/_remote_terminal_workspace.html,126,,"<form class=""form remote-terminal-dialog-form"" id=""remote-terminal-rename-form"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,129,,"<button class=""dialog-close"" id=""remote-terminal-rename-dismiss"" type=""button"" aria-label=""Close"">",,unverified-static-index
+input,twn_toolkit/templates/tools/_remote_terminal_workspace.html,132,,"<input id=""remote-terminal-rename-input"" type=""text"" maxlength=""100"" required autocomplete=""off"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,135,,"<button class=""secondary"" id=""remote-terminal-rename-cancel"" type=""button"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,136,,"<button id=""remote-terminal-rename-save"" type=""submit"">",,unverified-static-index
+dialog,twn_toolkit/templates/tools/_remote_terminal_workspace.html,142,,"<dialog class=""remote-terminal-dialog remote-terminal-datastore-dialog"" id=""remote-terminal-datastore-dialog"" aria-labelledby=""remote-terminal-datastore-title"">",,unverified-static-index
+form,twn_toolkit/templates/tools/_remote_terminal_workspace.html,143,,"<form class=""form remote-terminal-dialog-form"" id=""remote-terminal-datastore-form"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,146,,"<button class=""dialog-close"" id=""remote-terminal-datastore-dismiss"" type=""button"" aria-label=""Close"">",,unverified-static-index
+select,twn_toolkit/templates/tools/_remote_terminal_workspace.html,150,,"<select id=""remote-terminal-datastore-folder"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,156,,"<button class=""secondary"" id=""remote-terminal-datastore-cancel"" type=""button"">",,unverified-static-index
+button,twn_toolkit/templates/tools/_remote_terminal_workspace.html,157,,"<button id=""remote-terminal-datastore-save"" type=""submit"">",,unverified-static-index
 template,twn_toolkit/templates/tools/api_request.html,1,api_request,,,unverified-static-index
 button,twn_toolkit/templates/tools/api_request.html,11,,"<button class=""secondary tool-settings-close"" type=""button"" data-tool-settings-close {% if not has_results %}hidden{% endif %}>",,unverified-static-index
 form,twn_toolkit/templates/tools/api_request.html,14,,"<form class=""form"" id=""api-request-form"" method=""post"" data-loading-message=""Sending API request…"">",,unverified-static-index
@@ -1884,7 +1887,7 @@ a,twn_toolkit/templates/tools/dns_response.html,33,,"<a class=""button-link seco
 button,twn_toolkit/templates/tools/dns_response.html,34,,"<button type=""submit"" form=""dns-form"" data-dns-rerun data-loading-message=""{{ 'Queueing controlled DNS load test…' if form.mode == 'load' else 'Queueing DNS comparison…' }}"" >",,unverified-static-index
 button,twn_toolkit/templates/tools/dns_response.html,40,,"<button class=""secondary"" type=""button"" data-tool-settings-open aria-controls=""dns-settings"" aria-expanded=""false"">",,unverified-static-index
 button,twn_toolkit/templates/tools/dns_response.html,53,,"<button class=""secondary tool-settings-close"" type=""button"" data-tool-settings-close {% if not dns_has_results %}hidden{% endif %}>",,unverified-static-index
-form,twn_toolkit/templates/tools/dns_response.html,60,,"<form class=""dns-workspace-form"" method=""post"" id=""dns-form"" data-dns-max-load-queries=""{{ load_limits.queries }}"" data-dns-max-load-servers=""{{ load_limits.servers }}"" data-loading-message=""{{ 'Queueing controlled DNS load test…' if form.mode == 'load' else 'Queueing DNS comparison…' }}"" >",,unverified-static-index
+form,twn_toolkit/templates/tools/dns_response.html,60,,"<form class=""dns-workspace-form"" method=""post"" id=""dns-form"" data-unsaved-form data-dns-max-load-queries=""{{ load_limits.queries }}"" data-dns-max-load-servers=""{{ load_limits.servers }}"" data-loading-message=""{{ 'Queueing controlled DNS load test…' if form.mode == 'load' else 'Queueing DNS comparison…' }}"" >",,unverified-static-index
 input,twn_toolkit/templates/tools/dns_response.html,71,,"<input type=""radio"" name=""mode"" value=""compare"" {% if form.mode != ""load"" %}checked{% endif %}>",,unverified-static-index
 input,twn_toolkit/templates/tools/dns_response.html,78,,"<input type=""radio"" name=""mode"" value=""load"" {% if form.mode == ""load"" %}checked{% endif %}>",,unverified-static-index
 select,twn_toolkit/templates/tools/dns_response.html,98,,"<select class=""dns-profile-select"" data-kind=""hosts"" data-saved-profile-select aria-label=""Saved query list"">",,unverified-static-index
@@ -1935,7 +1938,7 @@ input,twn_toolkit/templates/tools/iperf3.html,109,,"<input name=""client_authori
 button,twn_toolkit/templates/tools/iperf3.html,115,,"<button type=""submit"" {{ 'disabled' if not capability.available else '' }}>",,unverified-static-index
 form,twn_toolkit/templates/tools/iperf3.html,166,,"<form method=""post"" action=""{{ url_for('tools.stop_iperf3_server', session_id=active_server.id) }}"" data-loading-message=""Requesting iPerf3 server stop…"">",,unverified-static-index
 button,twn_toolkit/templates/tools/iperf3.html,167,,"<button class=""danger"" type=""submit"" {{ 'disabled' if active_server.status == 'stopping' else '' }}>",,unverified-static-index
-form,twn_toolkit/templates/tools/iperf3.html,172,,"<form class=""iperf-action-form"" method=""post"" action=""{{ url_for('tools.start_iperf3_server') }}"" data-loading-message=""Starting the managed iPerf3 server…"">",,unverified-static-index
+form,twn_toolkit/templates/tools/iperf3.html,172,,"<form class=""iperf-action-form"" data-unsaved-form method=""post"" action=""{{ url_for('tools.start_iperf3_server') }}"" data-loading-message=""Starting the managed iPerf3 server…"">",,unverified-static-index
 input,twn_toolkit/templates/tools/iperf3.html,186,,"<input name=""server_bind_address"" value=""{{ server_form.bind_address }}"" placeholder=""0.0.0.0 or ::"" required>",,unverified-static-index
 input,twn_toolkit/templates/tools/iperf3.html,189,,"<input name=""server_port"" type=""number"" min=""1024"" max=""65535"" value=""{{ server_form.port }}"" required>",,unverified-static-index
 input,twn_toolkit/templates/tools/iperf3.html,197,,"<input name=""server_authorized"" type=""checkbox"" required>",,unverified-static-index
@@ -2038,10 +2041,10 @@ button,twn_toolkit/templates/tools/mso_conflicts.html,47,,"<button type=""submit
 a,twn_toolkit/templates/tools/mso_conflicts.html,53,,"<a class=""button-link secondary"" href=""{{ url_for('tools.mso_conflicts', page=page-1) }}"">",,unverified-static-index
 a,twn_toolkit/templates/tools/mso_conflicts.html,54,,"<a class=""button-link secondary"" href=""{{ url_for('tools.mso_conflicts', page=page+1) }}"">",,unverified-static-index
 template,twn_toolkit/templates/tools/multi_sftp.html,1,multi_sftp,,,unverified-static-index
-details,twn_toolkit/templates/tools/multi_sftp.html,14,,"<details class=""panel"">",,unverified-static-index
-a,twn_toolkit/templates/tools/multi_sftp.html,17,,"<a class=""button-link"" href=""{{ url_for('tools.download_transfer_job', job_id=diagnostic_job.id) }}"">",,unverified-static-index
+details,twn_toolkit/templates/tools/multi_sftp.html,18,,"<details class=""panel"">",,unverified-static-index
+a,twn_toolkit/templates/tools/multi_sftp.html,21,,"<a class=""button-link"" href=""{{ url_for('tools.download_transfer_job', job_id=diagnostic_job.id) }}"">",,unverified-static-index
 button,twn_toolkit/templates/tools/multi_sftp.html,28,,"<button class=""secondary tool-settings-close"" type=""button"" data-tool-settings-close {% if not has_results %}hidden{% endif %}>",,unverified-static-index
-form,twn_toolkit/templates/tools/multi_sftp.html,31,,"<form class=""form compact-tool-form bulk-transfer-form"" id=""bulk-transfer-form"" method=""post"" autocomplete=""off"" data-loading-message=""Queueing Bulk Transfer…"" data-sftp-form>",,unverified-static-index
+form,twn_toolkit/templates/tools/multi_sftp.html,31,,"<form class=""form compact-tool-form bulk-transfer-form"" id=""bulk-transfer-form"" data-unsaved-form method=""post"" autocomplete=""off"" data-loading-message=""Queueing Bulk Transfer…"" data-sftp-form>",,unverified-static-index
 select,twn_toolkit/templates/tools/multi_sftp.html,39,,"<select name=""protocol"" required data-transfer-protocol>",,unverified-static-index
 textarea,twn_toolkit/templates/tools/multi_sftp.html,48,,"<textarea name=""hosts"" rows=""5"" placeholder=""Basement Switch = 192.0.2.20&#10;Access switches = 10.0.0.1-10.0.0.24&#10;core-switch.example.com"" required>",,unverified-static-index
 input,twn_toolkit/templates/tools/multi_sftp.html,52,,"<input name=""username"" value=""{{ form.username }}"" required>",,unverified-static-index
@@ -2331,7 +2334,7 @@ button,twn_toolkit/templates/tools/ping_popout.html,44,,"<button id=""ping-profi
 button,twn_toolkit/templates/tools/ping_popout.html,53,,"<button id=""ping-restore-inline"" type=""button"">",,unverified-static-index
 template,twn_toolkit/templates/tools/port_scanner.html,1,port_scanner,,,unverified-static-index
 button,twn_toolkit/templates/tools/port_scanner.html,20,,"<button class=""secondary tool-settings-close"" type=""button"" data-tool-settings-close {% if not has_results %}hidden{% endif %}>",,unverified-static-index
-form,twn_toolkit/templates/tools/port_scanner.html,25,,"<form class=""compact-tool-form"" method=""post"" id=""port-scan-form"" data-loading-message=""Queueing TCP scan…"">",,unverified-static-index
+form,twn_toolkit/templates/tools/port_scanner.html,25,,"<form class=""compact-tool-form"" method=""post"" id=""port-scan-form"" data-unsaved-form data-loading-message=""Queueing TCP scan…"">",,unverified-static-index
 select,twn_toolkit/templates/tools/port_scanner.html,34,,"<select class=""port-existing-profile"" data-saved-profile-select>",,unverified-static-index
 button,twn_toolkit/templates/tools/port_scanner.html,35,,"<button class=""secondary compact-profile-primary"" type=""button"" data-saved-profile-primary>",,unverified-static-index
 details,twn_toolkit/templates/tools/port_scanner.html,36,,"<details class=""compact-profile-more"" data-saved-profile-more>",,unverified-static-index
@@ -2435,134 +2438,136 @@ button,twn_toolkit/templates/tools/remote_terminal.html,88,,"<button class=""sec
 button,twn_toolkit/templates/tools/remote_terminal.html,90,,"<button class=""secondary compact"" id=""remote-terminal-new-session"" type=""button"" data-open-quick-connect hidden>",,unverified-static-index
 a,twn_toolkit/templates/tools/remote_terminal.html,97,,"<a class=""button-link secondary"" href=""{{ url_for('tools.mso_conflicts') }}"">",,unverified-static-index
 button,twn_toolkit/templates/tools/remote_terminal.html,98,,"<button type=""button"" data-open-quick-connect>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,108,,"<button type=""button"" class=""secondary compact"" data-refresh-remote-sessions>",,unverified-static-index
 dialog,twn_toolkit/templates/tools/remote_terminal.html,116,,"<dialog class=""remote-terminal-dialog remote-quick-connect-dialog"" id=""remote-quick-connect-dialog"" aria-labelledby=""remote-quick-connect-title"">",,unverified-static-index
-form,twn_toolkit/templates/tools/remote_terminal.html,117,,"<form class=""form remote-terminal-dialog-form"" id=""remote-terminal-form"" data-start-url=""{{ url_for('tools.start_remote_terminal_session') }}"">",,unverified-static-index
+form,twn_toolkit/templates/tools/remote_terminal.html,117,,"<form class=""form remote-terminal-dialog-form"" id=""remote-terminal-form"" data-unsaved-form data-start-url=""{{ url_for('tools.start_remote_terminal_session') }}"" data-sessions-url=""{{ url_for('tools.remote_terminal_sessions') }}"">",,unverified-static-index
 button,twn_toolkit/templates/tools/remote_terminal.html,120,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,130,,"<select id=""remote-terminal-protocol"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,137,,"<input id=""remote-terminal-host"" type=""text"" maxlength=""255"" required placeholder=""switch.example.com"" autocomplete=""off"" autocapitalize=""none"" spellcheck=""false"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,140,,"<input id=""remote-terminal-port"" type=""number"" min=""1"" max=""65535"" value=""22"" required>",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,143,,"<input id=""remote-terminal-title"" type=""text"" maxlength=""100"" placeholder=""Core switch maintenance"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,149,,"<select id=""remote-terminal-console-device"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,153,,"<button class=""secondary"" type=""button"" data-refresh-console-devices>",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,157,,"<select id=""remote-terminal-console-baud"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,158,,"<select id=""remote-terminal-console-data-bits"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,159,,"<select id=""remote-terminal-console-parity"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,160,,"<select id=""remote-terminal-console-stop-bits"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,161,,"<select id=""remote-terminal-console-flow"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,169,,"<input type=""radio"" name=""quick_credential_mode"" value=""temporary"" checked>",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,170,,"<input type=""radio"" name=""quick_credential_mode"" value=""saved"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,171,,"<input type=""radio"" name=""quick_credential_mode"" value=""none"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,175,,"<input id=""remote-terminal-username"" type=""text"" maxlength=""128"" autocomplete=""username"" autocapitalize=""none"" spellcheck=""false"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,178,,"<input id=""remote-terminal-password"" type=""password"" autocomplete=""current-password"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,182,,"<select id=""remote-terminal-credential"">",,unverified-static-index
-details,twn_toolkit/templates/tools/remote_terminal.html,185,,"<details class=""remote-terminal-advanced-options"" data-quick-ssh-options>",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,188,,"<input id=""remote-terminal-unknown-host"" type=""checkbox"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,189,,"<input id=""remote-terminal-legacy"" type=""checkbox"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,194,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,195,,"<button id=""remote-terminal-start"" type=""submit"">",,unverified-static-index
-dialog,twn_toolkit/templates/tools/remote_terminal.html,200,,"<dialog class=""remote-terminal-dialog"" id=""remote-folder-dialog"" aria-labelledby=""remote-folder-title"">",,unverified-static-index
-form,twn_toolkit/templates/tools/remote_terminal.html,201,,"<form class=""form remote-terminal-dialog-form"" id=""remote-folder-form"" data-unsaved-form>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,202,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,204,,"<input id=""remote-folder-id"" type=""hidden"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,205,,"<input id=""remote-folder-name"" maxlength=""100"" required>",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,206,,"<select id=""remote-folder-parent"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,207,,"<select id=""remote-folder-visibility"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,211,,"<input type=""radio"" name=""folder_credential_mode"" value=""inherit"" checked>",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,212,,"<input type=""radio"" name=""folder_credential_mode"" value=""credential"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,213,,"<input type=""radio"" name=""folder_credential_mode"" value=""none"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,215,,"<select id=""remote-folder-credential"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,220,,"<button class=""secondary"" type=""button"" data-duplicate-folder title=""Copy this saved folder and its contents, up to 10,000 folders and hosts"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,220,,"<button class=""danger"" type=""button"" data-delete-folder>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,221,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,221,,"<input type=""checkbox"" role=""switch"" data-remote-mso aria-label=""Mainframe synced object"">",,unverified-static-index
-a,twn_toolkit/templates/tools/remote_terminal.html,221,,"<a class=""button-link secondary"" href=""{{ url_for('tools.mso_conflicts') }}"" data-remote-mso-conflict hidden>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,221,,"<button type=""submit"">",,unverified-static-index
-dialog,twn_toolkit/templates/tools/remote_terminal.html,226,,"<dialog class=""remote-terminal-dialog remote-host-dialog"" id=""remote-host-dialog"" aria-labelledby=""remote-host-title"">",,unverified-static-index
-form,twn_toolkit/templates/tools/remote_terminal.html,227,,"<form class=""form remote-terminal-dialog-form"" id=""remote-host-form"" data-unsaved-form>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,228,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,230,,"<input id=""remote-host-id"" type=""hidden"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,233,,"<input id=""remote-host-name"" maxlength=""100"" required placeholder=""Core Switch 01"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,234,,"<select id=""remote-host-protocol"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,236,,"<input id=""remote-host-address"" maxlength=""255"" required placeholder=""switch01.example.com"" autocapitalize=""none"" spellcheck=""false"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,237,,"<input id=""remote-host-port"" type=""number"" min=""1"" max=""65535"" value=""22"" required>",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,242,,"<select id=""remote-host-console-device"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,243,,"<button class=""secondary"" type=""button"" data-refresh-console-devices>",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,247,,"<select id=""remote-host-console-baud"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,248,,"<select id=""remote-host-console-data-bits"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,249,,"<select id=""remote-host-console-parity"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,250,,"<select id=""remote-host-console-stop-bits"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,251,,"<select id=""remote-host-console-flow"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,259,,"<input type=""radio"" name=""host_credential_mode"" value=""inherit"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,260,,"<input type=""radio"" name=""host_credential_mode"" value=""saved"" checked>",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,261,,"<input type=""radio"" name=""host_credential_mode"" value=""host"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,262,,"<input type=""radio"" name=""host_credential_mode"" value=""none"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,264,,"<select id=""remote-host-credential"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,266,,"<input id=""remote-host-credential-name"" maxlength=""100"" placeholder=""Core Switch 01 credentials"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,267,,"<input id=""remote-host-username"" maxlength=""128"" autocomplete=""username"" autocapitalize=""none"" spellcheck=""false"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,268,,"<input id=""remote-host-password"" type=""password"" autocomplete=""new-password"" placeholder=""Required for a new credential"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,273,,"<input id=""remote-host-unknown"" type=""checkbox"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,274,,"<input id=""remote-host-legacy"" type=""checkbox"">",,unverified-static-index
-details,twn_toolkit/templates/tools/remote_terminal.html,276,,"<details class=""remote-host-organization"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,278,,"<select id=""remote-host-folder"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,279,,"<select id=""remote-host-visibility"">",,unverified-static-index
-textarea,twn_toolkit/templates/tools/remote_terminal.html,281,,"<textarea id=""remote-host-notes"" rows=""3"" maxlength=""1000"" placeholder=""Location, role, maintenance context…"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,285,,"<button class=""secondary"" type=""button"" data-duplicate-host>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,285,,"<button class=""danger"" type=""button"" data-delete-host>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,286,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,286,,"<input type=""checkbox"" role=""switch"" data-remote-mso aria-label=""Mainframe synced object"">",,unverified-static-index
-a,twn_toolkit/templates/tools/remote_terminal.html,286,,"<a class=""button-link secondary"" href=""{{ url_for('tools.mso_conflicts') }}"" data-remote-mso-conflict hidden>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,286,,"<button type=""submit"">",,unverified-static-index
-dialog,twn_toolkit/templates/tools/remote_terminal.html,291,,"<dialog class=""remote-terminal-dialog remote-credential-dialog"" id=""remote-credential-dialog"" aria-labelledby=""remote-credential-title"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,293,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,300,,"<button class=""secondary compact"" type=""button"" data-new-credential>",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,302,,"<input type=""search"" data-library-index-query data-unsaved-ignore maxlength=""200"" autocomplete=""off"" placeholder=""Credential name or username"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,303,,"<button type=""button"" class=""secondary compact"" data-library-index-previous>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,303,,"<button type=""button"" class=""secondary compact"" data-library-index-next>",,unverified-static-index
-form,twn_toolkit/templates/tools/remote_terminal.html,307,,"<form class=""form"" id=""remote-credential-form"" data-unsaved-form>",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,308,,"<input id=""remote-credential-id"" type=""hidden"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,313,,"<input id=""remote-credential-name"" maxlength=""100"" required placeholder=""Network administrator"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,314,,"<input id=""remote-credential-username"" maxlength=""128"" required autocomplete=""username"" autocapitalize=""none"" spellcheck=""false"" placeholder=""admin"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,315,,"<select id=""remote-credential-visibility"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,317,,"<input id=""remote-credential-password"" type=""password"" autocomplete=""new-password"" placeholder=""Required for a new credential"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,321,,"<button class=""secondary"" type=""button"" data-duplicate-credential>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,321,,"<button class=""danger"" type=""button"" data-delete-credential>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,322,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,322,,"<input type=""checkbox"" role=""switch"" data-remote-mso aria-label=""Mainframe synced object"">",,unverified-static-index
-a,twn_toolkit/templates/tools/remote_terminal.html,322,,"<a class=""button-link secondary"" href=""{{ url_for('tools.mso_conflicts') }}"" data-remote-mso-conflict hidden>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,322,,"<button id=""remote-credential-save"" type=""submit"">",,unverified-static-index
-dialog,twn_toolkit/templates/tools/remote_terminal.html,329,,"<dialog class=""remote-terminal-dialog remote-library-bulk-dialog"" id=""remote-library-bulk-dialog"" aria-labelledby=""remote-library-bulk-title"">",,unverified-static-index
-form,twn_toolkit/templates/tools/remote_terminal.html,330,,"<form class=""form remote-terminal-dialog-form"" id=""remote-library-bulk-form"" data-unsaved-form>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,331,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
-details,twn_toolkit/templates/tools/remote_terminal.html,333,,"<details class=""remote-library-selection-review"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,335,,"<input id=""remote-library-change-location"" type=""checkbox"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,336,,"<select id=""remote-library-destination"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,339,,"<input id=""remote-library-change-credential"" type=""checkbox"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,343,,"<input type=""radio"" name=""bulk_credential_mode"" value=""inherit"" checked>",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,344,,"<input type=""radio"" name=""bulk_credential_mode"" value=""credential"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,345,,"<input type=""radio"" name=""bulk_credential_mode"" value=""none"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,347,,"<select id=""remote-library-credential"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,351,,"<select id=""remote-library-visibility"" data-bulk-value=""visibility"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,353,,"<input id=""remote-library-port"" data-bulk-value=""port"" type=""number"" min=""1"" max=""65535"" placeholder=""Keep existing"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,354,,"<select data-bulk-value=""allow_unknown_hosts"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,355,,"<select data-bulk-value=""allow_legacy_algorithms"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,356,,"<select data-bulk-value=""mso_enabled"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,359,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,359,,"<button type=""submit"">",,unverified-static-index
-dialog,twn_toolkit/templates/tools/remote_terminal.html,363,,"<dialog class=""remote-terminal-dialog"" id=""remote-library-rename-dialog"" aria-labelledby=""remote-library-rename-title"">",,unverified-static-index
-form,twn_toolkit/templates/tools/remote_terminal.html,364,,"<form class=""form remote-terminal-dialog-form"" id=""remote-library-rename-form"" data-unsaved-form>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,365,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,366,,"<input id=""remote-library-rename-name"" required maxlength=""100"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,368,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,368,,"<button type=""submit"">",,unverified-static-index
-dialog,twn_toolkit/templates/tools/remote_terminal.html,372,,"<dialog class=""remote-terminal-dialog remote-host-import-dialog"" id=""remote-host-import-dialog"" aria-labelledby=""remote-host-import-title"">",,unverified-static-index
-form,twn_toolkit/templates/tools/remote_terminal.html,373,,"<form class=""form remote-terminal-dialog-form"" id=""remote-host-import-form"" data-unsaved-form>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,374,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,378,,"<select id=""remote-host-import-folder"">",,unverified-static-index
-select,twn_toolkit/templates/tools/remote_terminal.html,379,,"<select id=""remote-host-import-protocol"">",,unverified-static-index
-input,twn_toolkit/templates/tools/remote_terminal.html,381,,"<input id=""remote-host-import-file"" type=""file"" accept="".csv,.txt,text/csv,text/plain"">",,unverified-static-index
-textarea,twn_toolkit/templates/tools/remote_terminal.html,383,,"<textarea id=""remote-host-import-text"" rows=""6"" maxlength=""524288"" placeholder=""192.0.2.10&#10;Core switch,192.0.2.11&#10;Legacy console,192.0.2.12,telnet,23"">",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,400,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
-button,twn_toolkit/templates/tools/remote_terminal.html,401,,"<button type=""submit"" id=""remote-host-import-submit"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,124,,"<button type=""button"" class=""secondary"" data-quick-replace-draft hidden>",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,132,,"<select id=""remote-terminal-protocol"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,139,,"<input id=""remote-terminal-host"" type=""text"" maxlength=""255"" required placeholder=""switch.example.com"" autocomplete=""off"" autocapitalize=""none"" spellcheck=""false"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,142,,"<input id=""remote-terminal-port"" type=""number"" min=""1"" max=""65535"" value=""22"" required>",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,145,,"<input id=""remote-terminal-title"" type=""text"" maxlength=""100"" placeholder=""Core switch maintenance"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,151,,"<select id=""remote-terminal-console-device"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,155,,"<button class=""secondary"" type=""button"" data-refresh-console-devices>",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,159,,"<select id=""remote-terminal-console-baud"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,160,,"<select id=""remote-terminal-console-data-bits"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,161,,"<select id=""remote-terminal-console-parity"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,162,,"<select id=""remote-terminal-console-stop-bits"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,163,,"<select id=""remote-terminal-console-flow"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,171,,"<input type=""radio"" name=""quick_credential_mode"" value=""temporary"" checked>",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,172,,"<input type=""radio"" name=""quick_credential_mode"" value=""saved"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,173,,"<input type=""radio"" name=""quick_credential_mode"" value=""none"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,177,,"<input id=""remote-terminal-username"" type=""text"" maxlength=""128"" autocomplete=""username"" autocapitalize=""none"" spellcheck=""false"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,180,,"<input id=""remote-terminal-password"" type=""password"" autocomplete=""current-password"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,184,,"<select id=""remote-terminal-credential"">",,unverified-static-index
+details,twn_toolkit/templates/tools/remote_terminal.html,187,,"<details class=""remote-terminal-advanced-options"" data-quick-ssh-options>",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,190,,"<input id=""remote-terminal-unknown-host"" type=""checkbox"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,191,,"<input id=""remote-terminal-legacy"" type=""checkbox"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,196,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,197,,"<button id=""remote-terminal-start"" type=""submit"">",,unverified-static-index
+dialog,twn_toolkit/templates/tools/remote_terminal.html,202,,"<dialog class=""remote-terminal-dialog"" id=""remote-folder-dialog"" aria-labelledby=""remote-folder-title"">",,unverified-static-index
+form,twn_toolkit/templates/tools/remote_terminal.html,203,,"<form class=""form remote-terminal-dialog-form"" id=""remote-folder-form"" data-unsaved-form>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,204,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,206,,"<input id=""remote-folder-id"" type=""hidden"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,207,,"<input id=""remote-folder-name"" maxlength=""100"" required>",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,208,,"<select id=""remote-folder-parent"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,209,,"<select id=""remote-folder-visibility"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,213,,"<input type=""radio"" name=""folder_credential_mode"" value=""inherit"" checked>",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,214,,"<input type=""radio"" name=""folder_credential_mode"" value=""credential"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,215,,"<input type=""radio"" name=""folder_credential_mode"" value=""none"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,217,,"<select id=""remote-folder-credential"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,222,,"<button class=""secondary"" type=""button"" data-duplicate-folder title=""Copy this saved folder and its contents, up to 10,000 folders and hosts"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,222,,"<button class=""danger"" type=""button"" data-delete-folder>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,223,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,223,,"<input type=""checkbox"" role=""switch"" data-remote-mso aria-label=""Mainframe synced object"">",,unverified-static-index
+a,twn_toolkit/templates/tools/remote_terminal.html,223,,"<a class=""button-link secondary"" href=""{{ url_for('tools.mso_conflicts') }}"" data-remote-mso-conflict hidden>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,223,,"<button type=""submit"">",,unverified-static-index
+dialog,twn_toolkit/templates/tools/remote_terminal.html,228,,"<dialog class=""remote-terminal-dialog remote-host-dialog"" id=""remote-host-dialog"" aria-labelledby=""remote-host-title"">",,unverified-static-index
+form,twn_toolkit/templates/tools/remote_terminal.html,229,,"<form class=""form remote-terminal-dialog-form"" id=""remote-host-form"" data-unsaved-form>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,230,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,232,,"<input id=""remote-host-id"" type=""hidden"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,235,,"<input id=""remote-host-name"" maxlength=""100"" required placeholder=""Core Switch 01"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,236,,"<select id=""remote-host-protocol"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,238,,"<input id=""remote-host-address"" maxlength=""255"" required placeholder=""switch01.example.com"" autocapitalize=""none"" spellcheck=""false"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,239,,"<input id=""remote-host-port"" type=""number"" min=""1"" max=""65535"" value=""22"" required>",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,244,,"<select id=""remote-host-console-device"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,245,,"<button class=""secondary"" type=""button"" data-refresh-console-devices>",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,249,,"<select id=""remote-host-console-baud"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,250,,"<select id=""remote-host-console-data-bits"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,251,,"<select id=""remote-host-console-parity"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,252,,"<select id=""remote-host-console-stop-bits"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,253,,"<select id=""remote-host-console-flow"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,261,,"<input type=""radio"" name=""host_credential_mode"" value=""inherit"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,262,,"<input type=""radio"" name=""host_credential_mode"" value=""saved"" checked>",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,263,,"<input type=""radio"" name=""host_credential_mode"" value=""host"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,264,,"<input type=""radio"" name=""host_credential_mode"" value=""none"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,266,,"<select id=""remote-host-credential"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,268,,"<input id=""remote-host-credential-name"" maxlength=""100"" placeholder=""Core Switch 01 credentials"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,269,,"<input id=""remote-host-username"" maxlength=""128"" autocomplete=""username"" autocapitalize=""none"" spellcheck=""false"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,270,,"<input id=""remote-host-password"" type=""password"" autocomplete=""new-password"" placeholder=""Required for a new credential"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,275,,"<input id=""remote-host-unknown"" type=""checkbox"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,276,,"<input id=""remote-host-legacy"" type=""checkbox"">",,unverified-static-index
+details,twn_toolkit/templates/tools/remote_terminal.html,278,,"<details class=""remote-host-organization"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,280,,"<select id=""remote-host-folder"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,281,,"<select id=""remote-host-visibility"">",,unverified-static-index
+textarea,twn_toolkit/templates/tools/remote_terminal.html,283,,"<textarea id=""remote-host-notes"" rows=""3"" maxlength=""1000"" placeholder=""Location, role, maintenance context…"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,287,,"<button class=""secondary"" type=""button"" data-duplicate-host>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,287,,"<button class=""danger"" type=""button"" data-delete-host>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,288,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,288,,"<input type=""checkbox"" role=""switch"" data-remote-mso aria-label=""Mainframe synced object"">",,unverified-static-index
+a,twn_toolkit/templates/tools/remote_terminal.html,288,,"<a class=""button-link secondary"" href=""{{ url_for('tools.mso_conflicts') }}"" data-remote-mso-conflict hidden>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,288,,"<button type=""submit"">",,unverified-static-index
+dialog,twn_toolkit/templates/tools/remote_terminal.html,293,,"<dialog class=""remote-terminal-dialog remote-credential-dialog"" id=""remote-credential-dialog"" aria-labelledby=""remote-credential-title"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,295,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,302,,"<button class=""secondary compact"" type=""button"" data-new-credential>",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,304,,"<input type=""search"" data-library-index-query data-unsaved-ignore maxlength=""200"" autocomplete=""off"" placeholder=""Credential name or username"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,305,,"<button type=""button"" class=""secondary compact"" data-library-index-previous>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,305,,"<button type=""button"" class=""secondary compact"" data-library-index-next>",,unverified-static-index
+form,twn_toolkit/templates/tools/remote_terminal.html,309,,"<form class=""form"" id=""remote-credential-form"" data-unsaved-form>",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,310,,"<input id=""remote-credential-id"" type=""hidden"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,315,,"<input id=""remote-credential-name"" maxlength=""100"" required placeholder=""Network administrator"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,316,,"<input id=""remote-credential-username"" maxlength=""128"" required autocomplete=""username"" autocapitalize=""none"" spellcheck=""false"" placeholder=""admin"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,317,,"<select id=""remote-credential-visibility"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,319,,"<input id=""remote-credential-password"" type=""password"" autocomplete=""new-password"" placeholder=""Required for a new credential"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,323,,"<button class=""secondary"" type=""button"" data-duplicate-credential>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,323,,"<button class=""danger"" type=""button"" data-delete-credential>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,324,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,324,,"<input type=""checkbox"" role=""switch"" data-remote-mso aria-label=""Mainframe synced object"">",,unverified-static-index
+a,twn_toolkit/templates/tools/remote_terminal.html,324,,"<a class=""button-link secondary"" href=""{{ url_for('tools.mso_conflicts') }}"" data-remote-mso-conflict hidden>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,324,,"<button id=""remote-credential-save"" type=""submit"">",,unverified-static-index
+dialog,twn_toolkit/templates/tools/remote_terminal.html,331,,"<dialog class=""remote-terminal-dialog remote-library-bulk-dialog"" id=""remote-library-bulk-dialog"" aria-labelledby=""remote-library-bulk-title"">",,unverified-static-index
+form,twn_toolkit/templates/tools/remote_terminal.html,332,,"<form class=""form remote-terminal-dialog-form"" id=""remote-library-bulk-form"" data-unsaved-form>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,333,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
+details,twn_toolkit/templates/tools/remote_terminal.html,335,,"<details class=""remote-library-selection-review"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,337,,"<input id=""remote-library-change-location"" type=""checkbox"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,338,,"<select id=""remote-library-destination"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,341,,"<input id=""remote-library-change-credential"" type=""checkbox"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,345,,"<input type=""radio"" name=""bulk_credential_mode"" value=""inherit"" checked>",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,346,,"<input type=""radio"" name=""bulk_credential_mode"" value=""credential"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,347,,"<input type=""radio"" name=""bulk_credential_mode"" value=""none"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,349,,"<select id=""remote-library-credential"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,353,,"<select id=""remote-library-visibility"" data-bulk-value=""visibility"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,355,,"<input id=""remote-library-port"" data-bulk-value=""port"" type=""number"" min=""1"" max=""65535"" placeholder=""Keep existing"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,356,,"<select data-bulk-value=""allow_unknown_hosts"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,357,,"<select data-bulk-value=""allow_legacy_algorithms"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,358,,"<select data-bulk-value=""mso_enabled"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,361,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,361,,"<button type=""submit"">",,unverified-static-index
+dialog,twn_toolkit/templates/tools/remote_terminal.html,365,,"<dialog class=""remote-terminal-dialog"" id=""remote-library-rename-dialog"" aria-labelledby=""remote-library-rename-title"">",,unverified-static-index
+form,twn_toolkit/templates/tools/remote_terminal.html,366,,"<form class=""form remote-terminal-dialog-form"" id=""remote-library-rename-form"" data-unsaved-form>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,367,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,368,,"<input id=""remote-library-rename-name"" required maxlength=""100"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,370,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,370,,"<button type=""submit"">",,unverified-static-index
+dialog,twn_toolkit/templates/tools/remote_terminal.html,374,,"<dialog class=""remote-terminal-dialog remote-host-import-dialog"" id=""remote-host-import-dialog"" aria-labelledby=""remote-host-import-title"">",,unverified-static-index
+form,twn_toolkit/templates/tools/remote_terminal.html,375,,"<form class=""form remote-terminal-dialog-form"" id=""remote-host-import-form"" data-unsaved-form>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,376,,"<button class=""dialog-close"" type=""button"" data-dialog-close aria-label=""Close"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,380,,"<select id=""remote-host-import-folder"">",,unverified-static-index
+select,twn_toolkit/templates/tools/remote_terminal.html,381,,"<select id=""remote-host-import-protocol"">",,unverified-static-index
+input,twn_toolkit/templates/tools/remote_terminal.html,383,,"<input id=""remote-host-import-file"" type=""file"" accept="".csv,.txt,text/csv,text/plain"">",,unverified-static-index
+textarea,twn_toolkit/templates/tools/remote_terminal.html,385,,"<textarea id=""remote-host-import-text"" rows=""6"" maxlength=""524288"" placeholder=""192.0.2.10&#10;Core switch,192.0.2.11&#10;Legacy console,192.0.2.12,telnet,23"">",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,402,,"<button class=""secondary"" type=""button"" data-dialog-close>",,unverified-static-index
+button,twn_toolkit/templates/tools/remote_terminal.html,403,,"<button type=""submit"" id=""remote-host-import-submit"">",,unverified-static-index
 template,twn_toolkit/templates/tools/remote_terminal_popout.html,1,remote_terminal_popout,,,unverified-static-index
 a,twn_toolkit/templates/tools/remote_terminal_popout.html,14,,"<a class=""brand"" href=""{{ url_for('tools.remote_terminal', session=popout_session.id) }}"" target=""_blank"" aria-label=""TWN Toolkit"">",,unverified-static-index
 a,twn_toolkit/templates/tools/remote_terminal_popout.html,15,,"<a class=""button-link secondary"" href=""{{ url_for('tools.remote_terminal', session=popout_session.id) }}"">",,unverified-static-index
@@ -2835,8 +2840,12 @@ handler,twn_toolkit/static/datastore.js,164,dragover,,,unverified-static-index
 handler,twn_toolkit/static/datastore.js,173,dragleave,,,unverified-static-index
 handler,twn_toolkit/static/datastore.js,177,drop,,,unverified-static-index
 handler,twn_toolkit/static/datastore.js,189,drop,,,unverified-static-index
-handler,twn_toolkit/static/diagnostic-job.js,6,pagehide,,,unverified-static-index
-handler,twn_toolkit/static/diagnostic-job.js,24,click,,,unverified-static-index
+handler,twn_toolkit/static/diagnostic-job.js,56,submit,,,unverified-static-index
+handler,twn_toolkit/static/diagnostic-job.js,73,click,,,unverified-static-index
+handler,twn_toolkit/static/diagnostic-job.js,137,submit,,,unverified-static-index
+handler,twn_toolkit/static/diagnostic-job.js,176,pagehide,,,unverified-static-index
+handler,twn_toolkit/static/diagnostic-job.js,177,pageshow,,,unverified-static-index
+handler,twn_toolkit/static/diagnostic-job.js,182,visibilitychange,,,unverified-static-index
 handler,twn_toolkit/static/dns-response.js,75,change,,,unverified-static-index
 handler,twn_toolkit/static/dns-response.js,78,input,,,unverified-static-index
 handler,twn_toolkit/static/dns-response.js,80,input,,,unverified-static-index
@@ -3025,124 +3034,133 @@ handler,twn_toolkit/static/raspberry-pi-networking.js,20,change,,,unverified-sta
 handler,twn_toolkit/static/raspberry-pi-networking.js,59,change,,,unverified-static-index
 handler,twn_toolkit/static/raspberry-pi-networking.js,65,click,,,unverified-static-index
 handler,twn_toolkit/static/raspberry-pi-networking.js,91,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,130,keydown,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,133,input,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,142,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,145,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,150,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,151,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,25,twn:remote-start-pending,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,36,input,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,37,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,38,twn:quick-connect-completed,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,46,twn:remote-connect-again,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,64,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,226,keydown,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,229,input,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,238,click,,,unverified-static-index
 handler,twn_toolkit/static/remote-connections.js,241,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,246,click,,,unverified-static-index
 handler,twn_toolkit/static/remote-connections.js,247,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,250,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,253,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,256,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,259,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,262,cancel,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,263,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,267,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,275,keydown,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,284,input,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,290,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,292,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,293,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,295,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,297,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,298,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,300,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,303,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,305,submit,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,306,submit,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,307,submit,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,308,submit,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,309,submit,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,310,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,311,input,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,312,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,313,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,314,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,317,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,320,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,321,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,322,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,323,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,324,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,325,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,327,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,329,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,330,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,331,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,332,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,333,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,334,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,335,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,336,twn:remote-session-started,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,339,twn:save-session-host,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,462,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,486,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,529,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,554,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,603,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,623,keydown,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,661,submit,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,684,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,709,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,755,pointerdown,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,763,pointermove,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,775,pointerup,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,776,pointercancel,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,777,dblclick,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,778,keydown,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,788,resize,,,unverified-static-index
-handler,twn_toolkit/static/remote-connections.js,1560,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,36,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,102,submit,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,103,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,107,scroll,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,108,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,112,change,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,113,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,114,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,117,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,123,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,126,submit,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,127,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,128,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,129,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,132,submit,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,337,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,343,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,346,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,349,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,352,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,355,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,358,cancel,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,359,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,363,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,371,keydown,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,380,input,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,386,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,388,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,389,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,391,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,393,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,394,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,396,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,399,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,401,submit,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,402,submit,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,403,submit,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,404,submit,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,405,submit,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,406,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,407,input,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,408,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,409,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,410,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,413,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,416,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,417,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,418,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,419,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,420,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,421,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,423,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,425,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,426,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,427,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,428,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,429,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,430,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,431,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,432,twn:remote-session-started,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,435,twn:save-session-host,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,559,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,583,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,626,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,651,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,700,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,720,keydown,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,758,submit,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,781,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,806,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,854,pointerdown,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,862,pointermove,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,874,pointerup,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,875,pointercancel,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,876,dblclick,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,877,keydown,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,887,resize,,,unverified-static-index
+handler,twn_toolkit/static/remote-connections.js,1659,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,37,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,105,submit,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,106,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,110,click,,,unverified-static-index
 handler,twn_toolkit/static/remote-terminal.js,133,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,134,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,135,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,137,scroll,,,unverified-static-index
 handler,twn_toolkit/static/remote-terminal.js,138,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,142,change,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,143,click,,,unverified-static-index
 handler,twn_toolkit/static/remote-terminal.js,144,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,147,click,,,unverified-static-index
 handler,twn_toolkit/static/remote-terminal.js,153,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,156,submit,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,157,click,,,unverified-static-index
 handler,twn_toolkit/static/remote-terminal.js,158,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,161,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,159,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,162,submit,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,163,click,,,unverified-static-index
 handler,twn_toolkit/static/remote-terminal.js,164,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,169,keydown,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,170,input,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,174,compositionstart,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,177,compositionend,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,181,focus,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,182,blur,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,183,beforeinput,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,188,paste,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,199,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,209,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,211,visibilitychange,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,215,pagehide,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,278,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,280,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,282,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,328,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,344,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,354,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,364,click,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,1246,pointerdown,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,1254,pointermove,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,1266,pointerup,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,1267,pointercancel,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,1268,dblclick,,,unverified-static-index
-handler,twn_toolkit/static/remote-terminal.js,1278,keydown,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,165,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,168,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,174,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,183,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,188,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,191,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,194,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,199,keydown,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,200,input,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,204,compositionstart,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,207,compositionend,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,211,focus,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,212,blur,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,213,beforeinput,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,218,paste,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,229,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,239,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,241,visibilitychange,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,245,pagehide,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,308,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,310,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,312,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,358,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,374,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,384,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,394,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,404,click,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,1326,pointerdown,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,1334,pointermove,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,1346,pointerup,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,1347,pointercancel,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,1348,dblclick,,,unverified-static-index
+handler,twn_toolkit/static/remote-terminal.js,1358,keydown,,,unverified-static-index
 handler,twn_toolkit/static/rename-editor.js,18,input,,,unverified-static-index
 handler,twn_toolkit/static/rename-editor.js,19,change,,,unverified-static-index
 handler,twn_toolkit/static/rename-editor.js,20,click,,,unverified-static-index
