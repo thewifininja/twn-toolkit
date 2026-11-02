@@ -68,3 +68,20 @@ def test_empty_recent_sessions_refresh_remains_empty(terminal):
     response = client.get('/tools/remote-terminal/sessions')
     assert response.status_code == 200 and response.json == {'sessions': []}
     opener.assert_not_called()
+
+
+def test_refresh_keeps_live_shell_older_than_recent_history_page(terminal):
+    app, client, manager, opener = terminal
+    old = manager.store.create_session(user_id='test-user', username='fixture', title='Old active shell',
+        host='active-fixture.test', port=22, remote_username='operator', record_transcript=False)
+    for _ in range(25):
+        retained(manager)
+    # The fixture has no owner runtime; retain its simulated live state while
+    # exercising real bounded store queries and the route's merge behavior.
+    with patch.object(manager, '_reconcile_orphaned_sessions'):
+        response = client.get('/tools/remote-terminal/sessions')
+    ids = [row['id'] for row in response.json['sessions']]
+    assert response.status_code == 200 and old['id'] in ids
+    assert len(ids) == len(set(ids)) == 25
+    assert next(row for row in response.json['sessions'] if row['id'] == old['id'])['state'] == 'connecting'
+    opener.assert_not_called()
