@@ -1,7 +1,7 @@
 {% if preview %}
-  <p class="field-note">Commands prepared for {{ preview.plans|length }} hosts. Connection and host-key checks happen when running.</p>
+  <p class="field-note">Commands prepared for {{ preview.plans|length }} {{ 'host' if preview.plans|length == 1 else 'hosts' }}. Connection and host-key checks happen when running.</p>
   <div class="multi-ssh-preflight-list">
-    {% for command_set in preview.selected_actions %}<div><span><strong>{{ loop.index }}. {{ command_set.name }}</strong><small>{{ 'This run only' if command_set.source == 'inline' else 'Saved commands' }}</small></span><span>{{ preview.plans|length }} hosts</span><span class="pill">Prepared</span></div>{% endfor %}
+    {% for command_set in preview.selected_actions %}<div><span><strong>{{ loop.index }}. {{ command_set.name }}</strong><small>{{ 'This run only' if command_set.source == 'inline' else 'Saved commands' }}</small></span><span>{{ preview.plans|length }} {{ 'host' if preview.plans|length == 1 else 'hosts' }}</span><span class="pill">Prepared</span></div>{% endfor %}
   </div>
   {% if preview.representative_plan %}
     <details class="multi-ssh-exact-plan" data-ssh-preview><summary>Preview commands · {{ preview.representative_plan.label or preview.representative_plan.host }}</summary><pre class="result-output">{% for command in preview.representative_plan.commands %}{{ command }}{% if not loop.last %}
