@@ -1,4 +1,6 @@
 """Refreshing terminal recovery state never starts a connection or leaks another owner."""
+import json
+import re
 from unittest.mock import Mock, patch
 
 import pytest
@@ -80,7 +82,12 @@ def test_refresh_keeps_live_shell_older_than_recent_history_page(terminal):
     # exercising real bounded store queries and the route's merge behavior.
     with patch.object(manager, '_reconcile_orphaned_sessions'):
         response = client.get('/tools/remote-terminal/sessions')
+        first_load = client.get('/tools/remote-terminal')
+    serialized = re.search(r'<script id="remote-terminal-initial-sessions" type="application/json">(.*?)</script>', first_load.get_data(as_text=True), re.S)
+    assert first_load.status_code == 200 and serialized
+    initial_ids = [row['id'] for row in json.loads(serialized.group(1))]
     ids = [row['id'] for row in response.json['sessions']]
+    assert initial_ids == ids
     assert response.status_code == 200 and old['id'] in ids
     assert len(ids) == len(set(ids)) == 25
     assert next(row for row in response.json['sessions'] if row['id'] == old['id'])['state'] == 'connecting'
