@@ -56,10 +56,12 @@ For every release:
 4. Treat any new advisory or expanded exposure as a release blocker until it is
    fixed or reviewed and documented here.
 
-## Pending review — 2026-11-11
+## Dependency lock update — 2026-11-11
 
-A local `pip-audit` run against the 0.27.0 locks, with the two exceptions above,
-reported new advisories for Pillow 12.3.0 (via ReportLab), pyasn1 0.6.4 (via
-PySNMP), certifi 2026.7.22 and dnspython 2.7.0. None has been reviewed or
-excepted. The dependency-audit CI job fails until the locks are regenerated or
-each advisory is reviewed here. Details: [`system-audit-2026-11.md`](system-audit-2026-11.md).
+The initial November audit found advisories in the v0.27.0 locks. PR #315,
+merged as `fa96366`, updates certifi and pyasn1 for all supported Pythons, and
+Pillow and dnspython for Python 3.11+. The dependency-audit job passed on that
+merged commit. Python 3.10 remains subject to the explicit exception above;
+this result does not establish that its dependency set is free of advisories.
+
+The original observations remain in [`system-audit-2026-11.md`](system-audit-2026-11.md).
