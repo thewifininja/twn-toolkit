@@ -1,5 +1,14 @@
 # System audit — 2026-11-11
 
+> Follow-up, 2026-11-11: PR #315 (`fa96366`) merged the dependency lock update;
+> its merged-main dependency audit passed. Finding 7 and the original validation
+> ledger below describe the pre-update audit snapshot. Python 3.10 still has the
+> documented exception in `security-advisories.md`. PR #314 has since been
+> rebased onto that main commit with the TLS listener test portability fix.
+> Current branch validation is recorded in the PR; historical local results
+> below are not validation of the rebased head.
+
+
 Repository-wide review of TWN Toolkit at `efa50d7` (v0.27.0 plus 43 unreleased
 local commits), followed by six focused fixes on `claude/repo-audit-2026-11`.
 This is a coverage ledger and backlog, not a sign-off. Status words: **tested** = asserted
