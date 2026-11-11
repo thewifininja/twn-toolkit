@@ -28,6 +28,7 @@ from flask import (
 
 from .mso_ui import metadata as mso_metadata
 from .execution_context import request_target, switch_destination
+from .local_redirects import local_redirect_target
 from .login_throttle import LoginThrottle, LoginThrottled, LOGIN_BODY_BYTES
 from .activity import ActivityStore
 from .automation import AutomationStore
@@ -1204,9 +1205,7 @@ def create_app(instance_path: str | None = None) -> Flask:
         session["last_seen"] = int(time.time())
 
     def _validated_next_url(candidate: str) -> str:
-        if candidate.startswith("/") and not candidate.startswith("//"):
-            return candidate
-        return url_for("index")
+        return local_redirect_target(candidate, url_for("index"))
 
     def _safe_next_url() -> str:
         return _validated_next_url(request.args.get("next", ""))
