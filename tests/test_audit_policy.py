@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 
 from twn_toolkit import create_app
@@ -16,7 +17,9 @@ class AuditPolicyContractTests(unittest.TestCase):
         self.assertEqual(AUDIT_PENDING_ENDPOINTS, frozenset())
 
     def test_every_mutating_route_has_one_explicit_audit_policy(self) -> None:
-        app = create_app()
+        instance = tempfile.TemporaryDirectory()
+        self.addCleanup(instance.cleanup)
+        app = create_app(instance.name)
         route_endpoints = {
             rule.endpoint
             for rule in app.url_map.iter_rules()
