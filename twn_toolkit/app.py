@@ -711,6 +711,15 @@ def create_app(instance_path: str | None = None) -> Flask:
         response.headers.setdefault(
             "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
         )
+        # Containment that needs no change to existing pages: no plugin
+        # content, no <base> rewriting of relative URLs, no framing, and forms
+        # may only submit to this origin. Script and style sources are not
+        # restricted yet; templates still carry inline handlers.
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; "
+            "form-action 'self'",
+        )
         if (request.endpoint or "") not in {"static", "favicon"}:
             response.headers.setdefault("Cache-Control", "no-store")
         return response

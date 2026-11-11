@@ -504,6 +504,12 @@ def test_same_origin_mutations_and_security_headers_are_preserved(tmp_path):
     assert page.headers["Referrer-Policy"] == "no-referrer"
     assert page.headers["Cross-Origin-Opener-Policy"] == "same-origin"
     assert page.headers["Cache-Control"] == "no-store"
+    policy = {
+        directive.strip() for directive in page.headers["Content-Security-Policy"].split(";")
+    }
+    assert policy == {
+        "object-src 'none'", "base-uri 'self'", "frame-ancestors 'none'", "form-action 'self'",
+    }
 
 
 def test_deleting_auth_file_returns_to_setup_without_touching_profiles(tmp_path):
