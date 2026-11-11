@@ -166,3 +166,55 @@ stop_distributed_unlocked
         expected.append("runtime")
     assert (tmp_path / "events").read_text().splitlines() == expected
     assert not (tmp_path / "twn-distributed.pid").exists()
+
+
+@pytest.mark.parametrize("kill_holder", [False, True], ids=["stale-marker", "killed-holder"])
+def test_lifecycle_lock_uses_kernel_ownership_and_recovers_after_exit(tmp_path, kill_holder):
+    import time
+
+    functions = shell_functions('acquire_managed_worker_lock', 'release_managed_worker_lock')
+    holder_code = functions + '''
+pid_is_running() { kill -0 "$1" 2>/dev/null; }
+acquire_managed_worker_lock "$DISTRIBUTED_PIDFILE" || exit 1
+: > "$INSTANCE/held"
+read -r command
+release_managed_worker_lock "$DISTRIBUTED_PIDFILE"
+'''
+    contender_code = functions + '''
+pid_is_running() { kill -0 "$1" 2>/dev/null; }
+acquire_managed_worker_lock "$DISTRIBUTED_PIDFILE" || exit 1
+: > "$INSTANCE/acquired"
+release_managed_worker_lock "$DISTRIBUTED_PIDFILE"
+'''
+    holder = subprocess.Popen(['sh', '-c', holder_code], env=environment(tmp_path),
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    contender = None
+    try:
+        deadline = time.monotonic() + 5
+        while not (tmp_path / 'held').exists():
+            assert holder.poll() is None
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        if kill_holder:
+            holder.kill()
+            holder.communicate(timeout=5)
+        else:
+            # Reproduce a stale ownership observation without allowing it to
+            # override an operation that still holds the actual lock.
+            (tmp_path / 'twn-distributed.pid.lock' / 'owner').write_text('999999999\n')
+        contender = subprocess.Popen(['sh', '-c', contender_code], env=environment(tmp_path),
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if not kill_holder:
+            time.sleep(0.3)
+            assert not (tmp_path / 'acquired').exists(), 'Stale marker bypassed the active lock.'
+            holder.communicate('release\n', timeout=5)
+            assert holder.returncode == 0
+        _, error = contender.communicate(timeout=5)
+        assert contender.returncode == 0, error
+        assert (tmp_path / 'acquired').exists()
+        assert not (tmp_path / 'twn-distributed.pid.lock').exists()
+    finally:
+        for process in (holder, contender):
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.communicate(timeout=5)
