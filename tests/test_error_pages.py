@@ -56,6 +56,8 @@ def test_missing_and_post_only_addresses_render_a_navigable_page(clients, path, 
     assert b"Return to the dashboard" in response.data
     plain = admin.get(path)
     assert plain.status_code == status
+    if status == 405:
+        assert response.headers["Allow"] == plain.headers["Allow"]
     assert b"Return to the dashboard" not in plain.data
 
 
