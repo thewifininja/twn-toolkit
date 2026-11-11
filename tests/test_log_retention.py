@@ -144,3 +144,24 @@ def test_upgrade_logs_included_but_audit_and_unrelated_files_untouched(tmp_path)
         assert (workspace / (name + '.1')).read_bytes() == b'new'
     assert (workspace / 'unrelated.log').read_bytes() == b'old-new'
     assert audit.read_bytes() == b'not-an-operational-log'
+
+
+def test_visiting_a_log_restricts_it_to_the_toolkit_account(tmp_path):
+    path = tmp_path / 'twn-toolkit-access.log'
+    path.write_bytes(b'198.51.100.7 GET /tools/ping')
+    os.chmod(path, 0o644)
+    inode = path.stat().st_ino
+    # Below the size threshold: no rotation, but the mode is still corrected.
+    assert not logs.rotate_log(path, logs.LogPolicy(max_bytes=64 * 1024, backups=2))
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert path.stat().st_ino == inode
+    assert path.read_bytes() == b'198.51.100.7 GET /tools/ping'
+
+
+def test_rotation_leaves_the_live_log_and_archive_private(tmp_path):
+    path = tmp_path / 'twn-toolkit-error.log'
+    path.write_bytes(b'x' * 8)
+    os.chmod(path, 0o664)
+    assert logs.rotate_log(path, logs.LogPolicy(max_bytes=4, backups=2))
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(path.with_suffix('.log.1').stat().st_mode) == 0o600
