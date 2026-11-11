@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel server-access-panel error-page" aria-labelledby="error-page-title">
+  <p class="eyebrow">{{ error_eyebrow }}</p>
+  <h1 id="error-page-title">{{ error_title }}</h1>
+  <p class="message {{ 'warning' if error_code < 500 else 'error' }}" role="status">{{ error_detail }}</p>
+  {% if error_hint %}<p class="field-note">{{ error_hint }}</p>{% endif %}
+  <p><a class="button-link" href="{{ url_for('index') }}">Return to the dashboard</a></p>
+</section>
+{% endblock %}
