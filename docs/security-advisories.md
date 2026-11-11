@@ -55,3 +55,11 @@ For every release:
 3. Confirm the mitigated feature boundary still matches the implementation.
 4. Treat any new advisory or expanded exposure as a release blocker until it is
    fixed or reviewed and documented here.
+
+## Pending review — 2026-11-11
+
+A local `pip-audit` run against the 0.27.0 locks, with the two exceptions above,
+reported new advisories for Pillow 12.3.0 (via ReportLab), pyasn1 0.6.4 (via
+PySNMP), certifi 2026.7.22 and dnspython 2.7.0. None has been reviewed or
+excepted. The dependency-audit CI job fails until the locks are regenerated or
+each advisory is reviewed here. Details: [`system-audit-2026-11.md`](system-audit-2026-11.md).

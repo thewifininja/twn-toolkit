@@ -618,6 +618,19 @@ make state, risk, and the next action obvious.
   Saving never performs DNS resolution. Browser titles retain the product name
   and add page/instance identity. Toolkit-managed certificate regeneration is
   explicit because it changes the certificate fingerprint.
+- Validate every caller-supplied post-action redirect with
+  `local_redirects.local_redirect_target`. A leading-slash check alone admits
+  targets that browsers resolve to another origin.
+- Browser navigations that end in an error render `templates/error.html`
+  through the shared handler in `app.py`. Script, form and API requests keep
+  plain responses; do not make a client parse the error page. Never put
+  exception text on the 500 page.
+- Request handlers must not start a child process to answer a question whose
+  answer cannot change between requests. Remember capability and version probes
+  against the executable they describe.
+- Files created under `instance/` by the web process inherit the launcher's
+  umask. Anything holding addresses, usernames, file names or request paths
+  must set owner-only mode itself.
 
 ## Upgrade and recovery architecture
 
@@ -1036,6 +1049,15 @@ Run the full suite before handoff:
 ```bash
 .venv/bin/python -m pytest -q
 ```
+
+Tests must pass `create_app()` a temporary instance path. The default is the
+checkout's own `instance/`, which is live data on an installed checkout;
+`tests/conftest.py` rejects the default. Prefer a separate worktree and virtual
+environment over running the suite inside a running installation, and keep
+`TMPDIR` short because one broker test binds a Unix socket beneath it.
+
+The 2026-11 repository-wide review, its coverage ledger, measurements and open
+backlog are in [`system-audit-2026-11.md`](system-audit-2026-11.md).
 
 For dashboard work, also check light/dark themes, a normal desktop width, a
 narrow pre-mobile width, and a phone-sized viewport.
