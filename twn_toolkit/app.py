@@ -350,7 +350,7 @@ def create_app(instance_path: str | None = None) -> Flask:
               "It has expired or was already retrieved. Nothing was run again.", ""),
         500: ("Unexpected error", "The toolkit could not complete that request",
               "An unexpected error was recorded in the toolkit error log.",
-              "Nothing on this page was saved. If the problem repeats, review "
+              "If the problem repeats, review "
               "Diagnostics or the web error log before retrying."),
     }
 
@@ -391,7 +391,14 @@ def create_app(instance_path: str | None = None) -> Flask:
         if code < 400 or not _wants_error_page():
             return error
         page = _error_page(code, str(error.description or ""))
-        return page if page is not None else error
+        if page is None:
+            return error
+        # Keep protocol headers such as Allow, WWW-Authenticate and Retry-After
+        # while replacing only the browser-facing representation.
+        response = error.get_response()
+        response.set_data(page[0])
+        response.content_type = "text/html; charset=utf-8"
+        return response
 
     from .terminal_websocket import websocket_route
 
