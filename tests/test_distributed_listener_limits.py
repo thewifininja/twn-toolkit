@@ -81,13 +81,41 @@ def test_incomplete_http_requests_expire_without_holding_slots(listener, partial
 
 
 def test_invalid_tls_releases_its_slot(listener):
-    with socket.create_connection(("127.0.0.1", listener.port), timeout=2) as connection:
-        connection.sendall(b"This is not TLS.\r\n")
+    # More rejected peers than slots exposes leaked handshake capacity.
+    for _ in range(3):
+        with socket.create_connection(("127.0.0.1", listener.port), timeout=2) as connection:
+            connection.sendall(b"This is not TLS.\r\n")
+            response = bytearray()
+            try:
+                while True:
+                    chunk = connection.recv(8)
+                    if not chunk:
+                        break
+                    response.extend(chunk)
+                    assert len(response) <= 7, "Unexpected data from rejected TLS peer."
+            except ConnectionResetError:
+                pass
+            # OpenSSL may send a fatal TLS alert before closing, depending on
+            # the platform. TCP fragmentation must not affect this assertion.
+            if response:
+                assert len(response) == 7
+                assert response[:2] == b"\x15\x03"  # Alert record, TLS major version.
+                assert response[2] <= 4
+                assert response[3:6] == b"\x00\x02\x02"  # Two bytes, fatal level.
+
+    # Slot release follows socket shutdown in the worker's finally block.
+    deadline = time.monotonic() + 2
+    while True:
         try:
-            assert connection.recv(1024) == b""
-        except ConnectionResetError:
-            pass
-    assert _get(listener) == 404
+            # Keep one healthy TLS connection open while using the other
+            # slot, so even a single leaked slot causes this check to fail.
+            with _connect(listener):
+                assert _get(listener) == 404
+            break
+        except (ConnectionError, ssl.SSLError, http.client.RemoteDisconnected):
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
 
 
 def test_request_read_deadline_does_not_shorten_server_side_wait(listener, monkeypatch):
