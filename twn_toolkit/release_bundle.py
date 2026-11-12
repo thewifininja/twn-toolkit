@@ -132,6 +132,7 @@ def validate_release_bundle(
     *,
     current_version: str | None = None,
     require_newer: bool = True,
+    check_python: bool = True,
 ) -> dict[str, Any]:
     if not path.is_file() or path.stat().st_size > MAX_BUNDLE_BYTES:
         raise UpgradeError("Release bundle is missing or exceeds the 256 MiB limit.")
@@ -165,7 +166,7 @@ def validate_release_bundle(
                 required_python = tuple(int(part) for part in minimum_python.split("."))
                 if required_python < (3, 11):
                     raise UpgradeError("Release bundle minimum Python must be 3.11 or newer.")
-                if sys.version_info[:2] < required_python:
+                if check_python and sys.version_info[:2] < required_python:
                     raise UpgradeError(
                         f"This bundle requires Python {minimum_python} or newer. "
                         "Upgrade the toolkit virtual environment first; see docs/python-upgrade.md."

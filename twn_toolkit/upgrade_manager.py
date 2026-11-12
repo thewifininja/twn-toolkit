@@ -314,6 +314,11 @@ class UpgradeManager:
             lock_fd = os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         except FileExistsError as exc:
             try:
+                runtime_id = lock_path.read_text().strip()
+                if re.fullmatch(r"[a-f0-9]{32}", runtime_id):
+                    journal = self.workspace / "runtime-migrations" / runtime_id / "plan.json"
+                    if journal.exists() and json.loads(journal.read_text()).get("state") not in {"succeeded", "rolled_back", "failed"}:
+                        raise UpgradeError("An interrupted runtime migration owns the upgrade lock. Use the migration tool's --recover command first.")
                 stale = time.time() - lock_path.stat().st_mtime >= 7200
             except OSError:
                 stale = False
@@ -541,6 +546,9 @@ def _integrity_manifest(root: Path) -> dict[str, str]:
                     for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                         digest.update(chunk)
                 values[relative] = digest.hexdigest()
+    runtime = root / "runtime.json"
+    if runtime.exists():
+        values["runtime.json"] = hashlib.sha256(runtime.read_bytes()).hexdigest()
     return values
 
 
@@ -554,7 +562,8 @@ def _verify_backup(backup: Path) -> None:
     _verify_sqlite_databases(backup / "instance", context="recovery point")
 
 
-def _create_backup(root: Path, instance: Path, backup_root: Path, request: dict[str, Any]) -> Path:
+def _create_backup(root: Path, instance: Path, backup_root: Path, request: dict[str, Any],
+                   *, runtime_backup: dict[str, Any] | None = None) -> Path:
     identifier = time.strftime("%Y%m%d-%H%M%S") + f"-{uuid.uuid4().hex[:8]}"
     destination = backup_root / identifier
     required = _tree_size(instance) + sum(_tree_size(root / name) for name in ROOT_DIRECTORIES) + 256 * 1024 * 1024
@@ -564,6 +573,8 @@ def _create_backup(root: Path, instance: Path, backup_root: Path, request: dict[
     try:
         _copy_code(root, destination / "code")
         _copy_instance_with_sqlite_snapshots(instance, destination / "instance")
+        if runtime_backup is not None:
+            _atomic_json(destination / "runtime.json", runtime_backup)
         _atomic_json(destination / "integrity.json", _integrity_manifest(destination))
         metadata = {
             "id": identifier, "created_at": time.time(),
@@ -613,6 +624,8 @@ def _extract_and_apply(root: Path, bundle: Path, manifest: dict[str, Any], works
 
 def _restore_backup(root: Path, instance: Path, backup: Path) -> None:
     _verify_backup(backup)
+    from .runtime_migration import verify_runtime_backup, restore_runtime_backup
+    verify_runtime_backup(root, backup)
     workspace = root / ".twn-upgrades"
     staging = Path(tempfile.mkdtemp(prefix="restore-", dir=workspace))
     staged_code = staging / "code"
@@ -635,6 +648,7 @@ def _restore_backup(root: Path, instance: Path, backup: Path) -> None:
         if instance.exists() or instance.is_symlink():
             os.replace(instance, displaced / "instance")
         os.replace(staged_instance, instance)
+        restore_runtime_backup(root, backup)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
@@ -869,6 +883,8 @@ def execute_request(request_path: Path, *, delay: float = 2.0) -> None:
         if request["operation"] == "rollback":
             backup = backup_root / str(request["backup_id"])
             _verify_backup(backup)
+            from .runtime_migration import verify_runtime_backup
+            verify_runtime_backup(root, backup)
             status("stopping", "Stopping services before restoring the recovery point.")
             stopped = _run([str(root / "twn"), "stop"], cwd=root, timeout=120)
             if stopped.returncode:
@@ -882,6 +898,7 @@ def execute_request(request_path: Path, *, delay: float = 2.0) -> None:
             _preserve_prepared_service_reload(instance, service_reload_prepared)
             _install_and_validate(
                 root, instance, str(request["target_version"]),
+                install_dependencies=not (backup / "runtime.json").exists(),
                 upgrade_request_id=str(request["id"]),
                 suppress_start_event=service_reload_prepared,
             )

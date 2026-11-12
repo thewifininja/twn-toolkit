@@ -27,12 +27,16 @@ Existing v0.19.2, manual, and macOS installations can use the normal workflow.
 
 ## Python runtime transition
 
-Python 3.11 is now the minimum. New bundles use format 2 and declare their
-minimum Python; format-1 updaters reject them before scheduling installation,
-even if their interpreter is already new enough. Complete the one-time
-[Python/updater migration](python-upgrade.md), then normal app/CLI upgrades
-resume. The new updater still validates legacy format-1 bundles for recovery
-and compatible historical workflows.
+Python 3.11 is now the minimum. The release's verified standalone migration tool
+can stage dependencies, preserve the old runtime, apply the source update, and
+restore matching code/data/runtime on failure. Users do not need to edit source
+or rename environments. See [automated Python migration](python-upgrade.md).
+
+Format-1 updaters reject format-2 bundles before installation. Run the independent
+migration tool once to cross that boundary; normal app/CLI upgrades then resume.
+Runtime-aware recovery points preserve a reference to the old environment and
+validate its integrity before any rollback. Earlier code/data-only recovery
+points retain their original behavior.
 
 ## What a supported release contains
 

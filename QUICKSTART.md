@@ -44,7 +44,7 @@ and [terminal streaming](docs/terminal-streaming.md).
 - Network access from the toolkit host to the systems being tested
 - A modern browser
 
-Existing installations using Python 3.10 must follow the [Python runtime migration guide](docs/python-upgrade.md) before updating. Python 3.12 or newer is recommended.
+Existing installations can use the verified release migration tool to update source and move off Python 3.10 automatically, with matching runtime rollback. See the [Python migration guide](docs/python-upgrade.md). Python 3.12 or newer is recommended.
 
 Optional workflows need their own system commands or remote permissions:
 

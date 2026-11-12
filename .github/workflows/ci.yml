@@ -42,6 +42,11 @@ jobs:
       - name: Validate upgrade release bundle
         run: python scripts/build_release_bundle.py --output-dir /tmp/twn-release-dist
 
+      - name: Build standalone runtime migration tool
+        run: |
+          python scripts/build_runtime_migration_tool.py --output /tmp/twn-runtime-migrate.pyz
+          python /tmp/twn-runtime-migrate.pyz --help
+
       - name: Validate release tag version
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -62,6 +67,18 @@ jobs:
               raise SystemExit(f"Tag {os.environ['RELEASE_TAG']} does not match APP_VERSION {actual}")
           print(f"Release tag matches APP_VERSION {actual}")
           PY
+
+  migration-bootstrap:
+    name: Migration bootstrap / Python 3.10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.10"
+      - run: |
+          python scripts/build_runtime_migration_tool.py --output /tmp/twn-runtime-migrate.pyz
+          python /tmp/twn-runtime-migrate.pyz --help
 
   security:
     name: Dependency audit / Python ${{ matrix.python }}
