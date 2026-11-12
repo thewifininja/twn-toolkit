@@ -24,7 +24,7 @@ import uuid
 import zipfile
 
 from .release_bundle import (
-    MAX_BUNDLE_BYTES, UpgradeError, parse_version, validate_release_bundle,
+    MAX_BUNDLE_BYTES, RELEASE_MANIFEST, ROOT_DIRECTORIES, ROOT_FILES, UpgradeError, parse_version, validate_release_bundle,
 )
 
 TERMINAL = {"succeeded", "rolled_back", "failed"}
@@ -43,6 +43,45 @@ def write_json(path: Path, value: dict) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def sync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def sync_tree(path: Path) -> None:
+    """Commit recovery material before publishing a phase that depends on it."""
+    if path.is_symlink() or not path.exists():
+        return
+    entries = [path, *path.rglob('*')] if path.is_dir() else [path]
+    directories = []
+    for item in entries:
+        if item.is_symlink() or '__pycache__' in item.parts or item.suffix in {'.pyc', '.pyo'}:
+            continue
+        if item.is_dir():
+            directories.append(item)
+        elif item.is_file():
+            try:
+                descriptor = os.open(item, os.O_RDONLY)
+            except FileNotFoundError:
+                continue  # A transient runtime file was removed during shutdown.
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+    for directory in reversed(directories):
+        sync_directory(directory)
+
+
+def sync_installation(root: Path, instance: Path) -> None:
+    for name in ROOT_FILES + (RELEASE_MANIFEST,) + ROOT_DIRECTORIES:
+        sync_tree(root / name)
+    sync_tree(instance)
+    sync_directory(root)
 
 
 def environment() -> dict[str, str]:
@@ -150,10 +189,12 @@ def restore_runtime_backup(root: Path, backup: Path) -> None:
             temporary.symlink_to(os.readlink(previous), target_is_directory=True)
         else:
             shutil.copytree(previous, temporary, symlinks=True)
+        sync_tree(temporary)
         if active.exists() or active.is_symlink():
             displaced = previous.parent / ('failed-venv-' + uuid.uuid4().hex)
             os.replace(active, displaced)
         os.replace(temporary, active)
+        sync_directory(root)
 
 
 def check_root(root: Path) -> None:
@@ -194,6 +235,9 @@ def migration_lock(root: Path, identifier: str, *, recover=False):
                 raise UpgradeError('Another upgrade/recovery is active. Inspect its status before proceeding.') from exc
             with os.fdopen(fd, 'w') as handle:
                 handle.write(identifier + '\n')
+                handle.flush()
+                os.fsync(handle.fileno())
+            sync_directory(workspace)
         try:
             yield
         finally:
@@ -201,6 +245,7 @@ def migration_lock(root: Path, identifier: str, *, recover=False):
             plan = workspace / 'runtime-migrations' / identifier / 'plan.json'
             if not plan.exists() or json.loads(plan.read_text()).get('state') in TERMINAL:
                 lock.unlink(missing_ok=True)
+                sync_directory(workspace)
 
 
 def ensure_idle(root: Path) -> None:
@@ -387,9 +432,14 @@ def perform(journal: Path, *, recover=False) -> None:
         (root / '.twn-upgrades/backups').mkdir(mode=0o700, exist_ok=True)
         record = {'format': 1, 'root': str(root), 'previous': str((journal / 'previous-venv').relative_to(root)),
                   'snapshot': snapshot(root / '.venv'), 'python_version': list(python_version(root / '.venv/bin/python'))}
-        backup = manager._create_backup(root, instance, root / '.twn-upgrades/backups', {
+        created_backup = manager._create_backup(root, instance, root / '.twn-upgrades/backups', {
             'from_version': plan['from_version'], 'target_version': plan['version'], 'operation': 'runtime-migration'},
             runtime_backup=record)
+        sync_tree(created_backup)
+        sync_directory(created_backup.parent)
+        sync_tree(root / '.venv')
+        sync_tree(instance)
+        backup = created_backup
         save_state(journal, plan, 'backed_up', backup=str(backup))
         # Publish intent first so interruption during handoff remains recoverable.
         save_state(journal, plan, 'handoff', service_reload=True)
@@ -397,9 +447,12 @@ def perform(journal: Path, *, recover=False) -> None:
         save_state(journal, plan, 'handoff', service_reload=prepared)
         save_state(journal, plan, 'switching_runtime')
         os.replace(root / '.venv', journal / 'previous-venv')
+        sync_directory(journal)
+        sync_directory(root)
         temporary = root / ('.venv-next-' + plan['id'])
         temporary.symlink_to(journal / 'venv', target_is_directory=True)
         os.replace(temporary, root / '.venv')
+        sync_directory(root)
         save_state(journal, plan, 'applying')
         manifest = validate_release_bundle(journal / 'release.zip', current_version=plan['from_version'])
         manager._extract_and_apply(root, journal / 'release.zip', manifest, root / '.twn-upgrades')
@@ -407,6 +460,7 @@ def perform(journal: Path, *, recover=False) -> None:
         # Dependencies were installed and checked before downtime. Avoid a second
         # network installation and leave the preserved old environment untouched.
         (instance / 'requirements.sha256').write_text(hashlib.sha256((root / 'requirements.txt').read_bytes()).hexdigest() + '\n')
+        sync_installation(root, instance)
         save_state(journal, plan, 'validating')
         os.environ['TWN_TOOLKIT_RELOAD_SERVICE_LAUNCHER'] = '1'
         manager._install_and_validate(root, instance, plan['version'], install_dependencies=False,

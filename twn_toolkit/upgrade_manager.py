@@ -624,7 +624,7 @@ def _extract_and_apply(root: Path, bundle: Path, manifest: dict[str, Any], works
 
 def _restore_backup(root: Path, instance: Path, backup: Path) -> None:
     _verify_backup(backup)
-    from .runtime_migration import verify_runtime_backup, restore_runtime_backup
+    from .runtime_migration import verify_runtime_backup, restore_runtime_backup, sync_installation
     verify_runtime_backup(root, backup)
     workspace = root / ".twn-upgrades"
     staging = Path(tempfile.mkdtemp(prefix="restore-", dir=workspace))
@@ -649,6 +649,8 @@ def _restore_backup(root: Path, instance: Path, backup: Path) -> None:
             os.replace(instance, displaced / "instance")
         os.replace(staged_instance, instance)
         restore_runtime_backup(root, backup)
+        if (backup / "runtime.json").exists():
+            sync_installation(root, instance)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 

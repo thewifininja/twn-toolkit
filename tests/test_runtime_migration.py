@@ -302,3 +302,28 @@ def test_cross_filesystem_instance_is_refused_before_staging(tmp_path, monkeypat
     with pytest.raises(UpgradeError, match='atomic recovery'):
         migration.check_root(root)
     assert not (root / '.twn-upgrades').exists()
+
+
+def test_failed_recovery_point_flush_does_not_switch_or_restore_unpublished_backup(tmp_path, monkeypatch):
+    root, journal = prepare(tmp_path, monkeypatch)
+    monkeypatch.setattr(migration, 'ensure_idle', lambda root: None)
+    health = Mock()
+    monkeypatch.setattr(manager, '_install_and_validate', health)
+    original_sync = migration.sync_tree
+
+    def failed_flush(path):
+        if path.parent == root / '.twn-upgrades/backups':
+            raise OSError('Injected disk flush failure')
+        return original_sync(path)
+
+    monkeypatch.setattr(migration, 'sync_tree', failed_flush)
+    with pytest.raises(OSError, match='disk flush failure'):
+        migration.perform(journal)
+    plan = migration.load_plan(journal)[1]
+    assert plan['state'] == 'rolled_back'
+    assert plan['backup'] == ''
+    assert not (journal / 'previous-venv').exists()
+    assert (root / '.venv/preserved-package').read_bytes() == b'original-runtime'
+    assert (root / 'instance/key').read_bytes() == b'original-key'
+    assert '0.27.0' in (root / 'twn_toolkit/version.py').read_text()
+    assert health.call_args.args[2] == '0.27.0'
