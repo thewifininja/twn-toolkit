@@ -473,6 +473,7 @@ class UpgradeRecoveryTests(unittest.TestCase):
                 execute_request(rollback_request, delay=0)
             install.assert_called_once_with(
                 root.resolve(), instance.resolve(), "0.10.2",
+                install_dependencies=True,
                 upgrade_request_id="rollback-1",
                 suppress_start_event=True,
             )

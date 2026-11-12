@@ -247,3 +247,22 @@ def test_private_recovery_metadata_is_integrity_checked(tmp_path, monkeypatch):
     with pytest.raises(UpgradeError, match='integrity verification'):
         manager._restore_backup(root, root / 'instance', backup)
     assert (root / '.venv').is_symlink()
+
+
+def test_normal_runtime_rollback_does_not_reinstall_the_preserved_environment(tmp_path, monkeypatch):
+    root, journal = prepare(tmp_path, monkeypatch)
+    monkeypatch.setattr(migration, 'ensure_idle', lambda root: None)
+    monkeypatch.setattr(manager, '_prepare_service_reload', lambda *args: False)
+    health = Mock()
+    monkeypatch.setattr(manager, '_install_and_validate', health)
+    migration.perform(journal)
+    backup = Path(migration.load_plan(journal)[1]['backup'])
+    request = root / '.twn-upgrades/rollback-runtime.json'
+    request.write_text(json.dumps({'id': 'runtime-rollback', 'operation': 'rollback', 'root': str(root),
+                                  'instance': str(root / 'instance'), 'from_version': '0.28.0',
+                                  'target_version': '0.27.0', 'backup_id': backup.name, 'actor': {}}))
+    health.reset_mock()
+    manager.execute_request(request, delay=0)
+    assert health.call_count == 1
+    assert health.call_args.kwargs['install_dependencies'] is False
+    assert (root / '.venv/preserved-package').read_bytes() == b'original-runtime'
