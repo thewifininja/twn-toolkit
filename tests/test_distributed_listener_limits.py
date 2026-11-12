@@ -83,10 +83,18 @@ def test_incomplete_http_requests_expire_without_holding_slots(listener, partial
 def test_invalid_tls_releases_its_slot(listener):
     with socket.create_connection(("127.0.0.1", listener.port), timeout=2) as connection:
         connection.sendall(b"This is not TLS.\r\n")
+        received = b""
         try:
-            assert connection.recv(1024) == b""
+            while chunk := connection.recv(1024):
+                received += chunk
         except ConnectionResetError:
             pass
+        # Depending on the OpenSSL build the listener either closes silently
+        # or first sends one fatal TLS alert record. Both reject the peer; it
+        # must never answer with application data.
+        assert received == b"" or (
+            len(received) == 7 and received[0] == 0x15 and received[5] == 0x02
+        )
     assert _get(listener) == 404
 
 
