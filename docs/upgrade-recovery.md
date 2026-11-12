@@ -25,6 +25,15 @@ migration across concurrent web workers. No stepped upgrade through v0.19.2 is
 required. After this transition, app and CLI upgrades are equivalent again.
 Existing v0.19.2, manual, and macOS installations can use the normal workflow.
 
+## Python runtime transition
+
+Python 3.11 is now the minimum. New bundles use format 2 and declare their
+minimum Python; format-1 updaters reject them before scheduling installation,
+even if their interpreter is already new enough. Complete the one-time
+[Python/updater migration](python-upgrade.md), then normal app/CLI upgrades
+resume. The new updater still validates legacy format-1 bundles for recovery
+and compatible historical workflows.
+
 ## What a supported release contains
 
 Every published stable release intended for in-app upgrade has two assets:

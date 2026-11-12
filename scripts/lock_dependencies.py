@@ -15,7 +15,7 @@ INDEX = "https://pypi.org/simple"
 FILES = ("requirements.in", "requirements-dev.in", "requirements.txt", "requirements-dev.txt")
 MANIFEST = "requirements-lock.json"
 POLICY = {"format": 1, "resolver": f"uv {RESOLVER_VERSION}", "index": INDEX,
-          "minimum_python": "3.10", "universal": True, "generate_hashes": True}
+          "minimum_python": "3.11", "universal": True, "generate_hashes": True}
 
 
 def provenance(root: Path) -> dict:
@@ -40,7 +40,7 @@ def generate(root: Path, uv: str, *, upgrade: bool = False) -> None:
     version = subprocess.check_output([uv, "--version"], text=True, env=environment).split()
     if version[:2] != ["uv", RESOLVER_VERSION]:
         raise ValueError(f"Install uv=={RESOLVER_VERSION} in a separate maintainer environment.")
-    common = [uv, "--no-config", "pip", "compile", "--universal", "--python-version", "3.10",
+    common = [uv, "--no-config", "pip", "compile", "--universal", "--python-version", "3.11",
               "--generate-hashes", "--no-strip-markers", "--default-index", INDEX,
               "--custom-compile-command", "python scripts/lock_dependencies.py"]
     if upgrade:

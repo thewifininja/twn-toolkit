@@ -39,10 +39,12 @@ and [terminal streaming](docs/terminal-streaming.md).
 
 ## Requirements
 
-- Python 3.10 or newer
+- Python 3.11 or newer
 - macOS, Linux, or Raspberry Pi OS
 - Network access from the toolkit host to the systems being tested
 - A modern browser
+
+Existing installations using Python 3.10 must follow the [Python runtime migration guide](docs/python-upgrade.md) before updating. Python 3.12 or newer is recommended.
 
 Optional workflows need their own system commands or remote permissions:
 

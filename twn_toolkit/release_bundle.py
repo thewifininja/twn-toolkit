@@ -5,13 +5,15 @@ import json
 import os
 import re
 import stat
+import sys
 import uuid
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-UPGRADE_FORMAT = 1
+UPGRADE_FORMAT = 2
+MINIMUM_PYTHON = "3.11"
 PRODUCT_ID = "twn-toolkit"
 MAX_BUNDLE_BYTES = 256 * 1024 * 1024
 MAX_EXPANDED_BYTES = 512 * 1024 * 1024
@@ -107,6 +109,7 @@ def build_release_bundle(
         "product": PRODUCT_ID,
         "version": version,
         "minimum_upgrade_version": minimum_upgrade_version,
+        "minimum_python": MINIMUM_PYTHON,
         "files": entries,
     }
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -151,10 +154,22 @@ def validate_release_bundle(
             if not isinstance(manifest, dict):
                 raise UpgradeError("Release manifest is invalid.")
             if (
-                manifest.get("format") != UPGRADE_FORMAT
+                manifest.get("format") not in (1, UPGRADE_FORMAT)
                 or manifest.get("product") != PRODUCT_ID
             ):
                 raise UpgradeError("Release bundle is not compatible with this toolkit.")
+            if manifest["format"] == UPGRADE_FORMAT:
+                minimum_python = manifest.get("minimum_python")
+                if not isinstance(minimum_python, str) or not re.fullmatch(r"3\.[1-9]\d*", minimum_python):
+                    raise UpgradeError("Release bundle has an invalid minimum Python version.")
+                required_python = tuple(int(part) for part in minimum_python.split("."))
+                if required_python < (3, 11):
+                    raise UpgradeError("Release bundle minimum Python must be 3.11 or newer.")
+                if sys.version_info[:2] < required_python:
+                    raise UpgradeError(
+                        f"This bundle requires Python {minimum_python} or newer. "
+                        "Upgrade the toolkit virtual environment first; see docs/python-upgrade.md."
+                    )
             version = str(manifest.get("version", ""))
             minimum = str(manifest.get("minimum_upgrade_version", ""))
             parse_version(version)

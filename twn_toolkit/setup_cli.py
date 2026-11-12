@@ -155,8 +155,8 @@ def main(argv=None):
     parser.add_argument('--expect-network',action='store_true',help=argparse.SUPPRESS)
     parser.add_argument('--verify',action='store_true',help='Report dependencies and current-account capabilities')
     args=parser.parse_args(argv)
-    if sys.version_info < (3,10):
-        parser.error('Python 3.10 or newer is required. Install a supported Python first.')
+    if sys.version_info < (3,11):
+        parser.error('Python 3.11 or newer is required. Install a supported Python first.')
     root=args.root.resolve()
     try:
         if args.configure_instance:

@@ -1106,11 +1106,19 @@ requirements_hash() {
   fi
 }
 
-ensure_requirements() {
+require_supported_python() {
   if [ ! -x "$PYTHON" ]; then
     echo "Python virtual environment is missing. Run: ./install.sh" >&2
     exit 1
   fi
+  if ! "$PYTHON" -c 'import sys; raise SystemExit(sys.version_info < (3, 11))'; then
+    echo "Python 3.11 or newer is required; the existing environment has not been changed. See docs/python-upgrade.md." >&2
+    exit 1
+  fi
+}
+
+ensure_requirements() {
+  require_supported_python
   mkdir -p "$INSTANCE"
   "$PYTHON" "$ROOT/scripts/lock_dependencies.py" --check
   current_hash=$(requirements_hash)
@@ -1244,6 +1252,7 @@ offer_permission_repair() {
 }
 
 start() {
+  require_supported_python
   validation_direct_start=0
   if [ "$SERVICE_RUN_MODE" != "1" ] \
     && [ "$SERVICE_RELOAD_REQUESTED" = "1" ] \
@@ -1637,6 +1646,7 @@ automation_restart() {
 }
 
 recover() {
+  require_supported_python
   if [ ! -x "$PYTHON" ]; then
     echo "Python virtual environment is missing. Run: ./install.sh" >&2
     exit 1
@@ -2088,7 +2098,7 @@ service_control() {
 case "${1:-}" in
   setup)
     shift
-    exec python3 "$ROOT/scripts/guided_install.py" "$@"
+    exec "${TWN_TOOLKIT_PYTHON:-python3}" "$ROOT/scripts/guided_install.py" "$@"
     ;;
   start)
     start
@@ -2097,6 +2107,7 @@ case "${1:-}" in
     stop
     ;;
   restart)
+    require_supported_python
     stop
     start
     ;;
