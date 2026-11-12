@@ -266,3 +266,39 @@ def test_normal_runtime_rollback_does_not_reinstall_the_preserved_environment(tm
     assert health.call_count == 1
     assert health.call_args.kwargs['install_dependencies'] is False
     assert (root / '.venv/preserved-package').read_bytes() == b'original-runtime'
+
+
+def test_runtime_recovery_preserves_an_existing_instance_directory_symlink(tmp_path, monkeypatch):
+    root, journal = prepare(tmp_path, monkeypatch)
+    actual = tmp_path / 'instance-data'
+    (root / 'instance').rename(actual)
+    (root / 'instance').symlink_to(actual, target_is_directory=True)
+    monkeypatch.setattr(migration, 'ensure_idle', lambda root: None)
+    monkeypatch.setattr(manager, '_prepare_service_reload', lambda *args: False)
+    health = Mock()
+    monkeypatch.setattr(manager, '_install_and_validate', health)
+    migration.perform(journal)
+    assert health.call_args.args[1] == actual
+    backup = Path(migration.load_plan(journal)[1]['backup'])
+    manager._restore_backup(root, actual, backup)
+    assert (root / 'instance').is_symlink()
+    assert (root / 'instance/key').read_bytes() == b'original-key'
+    assert (root / '.venv/preserved-package').read_bytes() == b'original-runtime'
+
+
+def test_cross_filesystem_instance_is_refused_before_staging(tmp_path, monkeypatch):
+    root = installed(tmp_path)
+    original = Path.stat
+
+    def other_filesystem(path, *args, **kwargs):
+        result = original(path, *args, **kwargs)
+        if path == root / 'instance':
+            values = list(result)
+            values[2] += 1
+            return os.stat_result(values)
+        return result
+
+    monkeypatch.setattr(Path, 'stat', other_filesystem)
+    with pytest.raises(UpgradeError, match='atomic recovery'):
+        migration.check_root(root)
+    assert not (root / '.twn-upgrades').exists()

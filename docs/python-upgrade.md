@@ -99,3 +99,5 @@ The same selection works with guided setup. The installer continues to reject an
 unsupported existing environment without changing it; use the release migration
 tool for an existing installation. This keeps a normal installation command
 from unexpectedly performing a runtime cutover.
+
+For atomic code/data recovery, the instance directory must share the installation filesystem and have a writable parent. The tool refuses other layouts before migration; an existing instance symlink on the same filesystem is preserved.

@@ -162,6 +162,9 @@ def check_root(root: Path) -> None:
     for name in ('twn', 'instance', '.venv/bin/python', 'twn_toolkit/version.py'):
         if not (root / name).exists():
             raise UpgradeError('Choose an existing toolkit installation with an intact environment.')
+    instance = (root / 'instance').resolve()
+    if instance.stat().st_dev != root.stat().st_dev or not os.access(instance.parent, os.W_OK | os.X_OK):
+        raise UpgradeError('The instance directory requires operator review: atomic recovery needs the same filesystem and a writable parent.')
     workspace = root / '.twn-upgrades'
     if workspace.is_symlink():
         raise UpgradeError('The upgrade workspace must not be a symbolic link.')
@@ -347,7 +350,7 @@ def perform(journal: Path, *, recover=False) -> None:
     # interpreter, so source replacement and .venv cutover cannot change imports.
     from . import upgrade_manager as manager
     root, plan = load_plan(journal)
-    instance = root / 'instance'
+    instance = (root / 'instance').resolve()
     env = environment()
     env['TWN_TOOLKIT_UPGRADE_REQUEST_ID'] = plan['id']
     backup = Path(plan['backup']) if plan['backup'] else None
