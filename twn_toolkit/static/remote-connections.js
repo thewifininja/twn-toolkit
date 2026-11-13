@@ -16,6 +16,93 @@
   const explorer = manager.querySelector(".remote-connection-explorer");
   const widthResizer = document.getElementById("remote-connection-width-resizer");
   const quickForm = document.getElementById("remote-terminal-form");
+  let quickDraftTouched = false;
+  let pendingConnectionAgain = null;
+  let quickRecoveryContext = false;
+  const reconnectNote = quickForm.querySelector('[data-quick-reconnect-note]');
+  const replaceDraftButton = quickForm.querySelector('[data-quick-replace-draft]');
+  const quickOpenStates = new Map();
+  document.addEventListener('twn:remote-start-pending', (event) => {
+    document.querySelectorAll('[data-open-quick-connect]').forEach((button) => {
+      if (event.detail) {
+        quickOpenStates.set(button, button.disabled);
+        button.disabled = true;
+      } else if (quickOpenStates.has(button)) {
+        button.disabled = quickOpenStates.get(button);
+        quickOpenStates.delete(button);
+      }
+    });
+  });
+  quickForm.addEventListener('input', () => { quickDraftTouched = true; });
+  quickForm.addEventListener('change', () => { quickDraftTouched = true; });
+  document.addEventListener('twn:quick-connect-completed', () => {
+    quickDraftTouched = false;
+    quickRecoveryContext = false;
+    pendingConnectionAgain = null;
+    reconnectNote.hidden = true;
+    replaceDraftButton.hidden = true;
+    guard()?.reset(quickForm);
+  });
+  document.addEventListener('twn:remote-connect-again', (event) => {
+    const session = event.detail;
+    if (!session || ['running', 'connecting'].includes(session.state)) return;
+    if (window.TwnRemoteTerminal.startPending()) {
+      setStatus('remote-terminal-start-status', 'Wait for the current connection request before preparing another.');
+      return;
+    }
+    if (quickDraftTouched) {
+      pendingConnectionAgain = session;
+      reconnectNote.className = 'message warning';
+      reconnectNote.textContent = 'Your existing connection draft is still here. Keep editing it, or explicitly replace it with the previous session’s destination.';
+      reconnectNote.hidden = false;
+      replaceDraftButton.hidden = false;
+      openDialog(quickDialog, 'remote-terminal-host');
+      return;
+    }
+    prepareConnectionAgain(session);
+  });
+  replaceDraftButton.addEventListener('click', () => {
+    if (pendingConnectionAgain) prepareConnectionAgain(pendingConnectionAgain);
+  });
+  function prepareConnectionAgain(session) {
+    // Copy only public destination information. Never reuse historical host IDs,
+    // saved credentials, passwords, host-key exceptions or legacy permissions.
+    const fields = {
+      protocol: session.protocol || 'ssh', title: session.title || '',
+      host: session.protocol === 'console' ? '' : session.host || '', port: session.port || 22,
+      username: session.remote_username || '', password: '', credential: '',
+      'console-baud': session.console_baud_rate || 9600,
+      'console-data-bits': session.console_data_bits || 8,
+      'console-parity': session.console_parity || 'none',
+      'console-stop-bits': session.console_stop_bits || 1,
+      'console-flow': session.console_flow_control || 'none',
+    };
+    for (const [name, value] of Object.entries(fields)) {
+      const field = document.getElementById('remote-terminal-' + name);
+      field.value = value;
+      if (field.tagName === 'SELECT') window.TwnSelectControls?.sync(field);
+    }
+    setConsoleDeviceValue('remote-terminal-console-device', session.console_device_id || '', session.console_device_label || 'Previously attached device');
+    quickForm.querySelector('input[name="quick_credential_mode"][value="temporary"]').checked = true;
+    document.getElementById('remote-terminal-unknown-host').checked = false;
+    document.getElementById('remote-terminal-legacy').checked = false;
+    syncProtocolControls('quick', true);
+    window.TwnSelectControls?.sync(quickProtocol);
+    quickDraftTouched = true;
+    pendingConnectionAgain = null;
+    replaceDraftButton.hidden = true;
+    quickRecoveryContext = true;
+    updateReconnectNotice();
+    setStatus('remote-terminal-start-status', session.protocol === 'ssh' ? 'Enter credentials and review the destination before clicking Connect.' : 'Review the destination before clicking Connect.');
+    openDialog(quickDialog, session.protocol === 'console' ? 'remote-terminal-console-device' : 'remote-terminal-host');
+  }
+  function updateReconnectNotice() {
+    if (!quickRecoveryContext || pendingConnectionAgain) return;
+    reconnectNote.className = 'field-note';
+    reconnectNote.textContent = 'Start a new connection to the previous destination. Previous output stays available. Saved-host updates and credentials are not loaded; use Connections for current saved settings.'
+      + (quickProtocol.value === 'ssh' ? ' SSH exceptions start off; review Connection options before connecting.' : '');
+    reconnectNote.hidden = false;
+  }
   const folderForm = document.getElementById("remote-folder-form");
   const hostForm = document.getElementById("remote-host-form");
   const credentialForm = document.getElementById("remote-credential-form");
@@ -45,6 +132,15 @@
   }
   function closeEditor(dialog, saved = false) {
     const form = dialog?.querySelector('form');
+    if (form === quickForm && window.TwnRemoteTerminal.startPending()) {
+      setStatus('remote-terminal-start-status', 'The connection request is still in progress. Wait for its outcome; closing this dialog would not stop an accepted session.');
+      return;
+    }
+    if (form === quickForm) {
+      if (pendingConnectionAgain) reconnectNote.hidden = true;
+      pendingConnectionAgain = null;
+      replaceDraftButton.hidden = true;
+    }
     if (!saved && form && !mayReplaceEditor(form)) return;
     if (editorForms.includes(form)) {
       form.querySelectorAll('input[type="password"]').forEach((input) => { input.value = ""; });
@@ -239,7 +335,7 @@
 
   document.querySelectorAll("[data-open-quick-connect]").forEach((button) => {
     button.addEventListener("click", () => {
-      setStatus("remote-terminal-start-status", "");
+      if (!quickDraftTouched) setStatus("remote-terminal-start-status", "");
       openDialog(quickDialog, "remote-terminal-host");
     });
   });
@@ -375,6 +471,7 @@
     syncProtocolControls("host", true);
     updateSelectionBar();
     editorForms.filter((form) => !form.closest("dialog").open).forEach(resetEditor);
+    if (!quickDraftTouched && !window.TwnRemoteTerminal.startPending()) guard()?.reset(quickForm);
   }
 
   function renderTree() {
@@ -727,6 +824,7 @@
     const original = button.innerHTML;
     button.disabled = true;
     button.classList.add("connecting");
+    button.setAttribute("aria-busy", "true");
     try {
       await window.TwnRemoteTerminal.start({host_id: host.id});
     } catch (_error) {
@@ -734,6 +832,7 @@
     } finally {
       button.disabled = false;
       button.classList.remove("connecting");
+      button.removeAttribute("aria-busy");
       if (!button.innerHTML) button.innerHTML = original;
     }
   }
@@ -1723,6 +1822,7 @@
         option.hidden = protocol !== "telnet";
       });
       syncQuickCredentialMode();
+      updateReconnectNotice();
     } else {
       hostForm.querySelectorAll("[data-host-network]").forEach((field) => field.hidden = protocol === "console");
       hostForm.querySelector("[data-host-console]").hidden = protocol !== "console";

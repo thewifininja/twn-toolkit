@@ -169,7 +169,7 @@
           </footer>
         </div>
       {% else %}
-        <form class="iperf-action-form" method="post" action="{{ url_for('tools.start_iperf3_server') }}" data-loading-message="Starting the managed iPerf3 server…">
+        <form class="iperf-action-form" data-unsaved-form method="post" action="{{ url_for('tools.start_iperf3_server') }}" data-loading-message="Starting the managed iPerf3 server…">
           {% if latest_server and latest_server.status == 'error' %}
             <p class="message error">
               <strong>The previous listener could not start.</strong>
@@ -326,7 +326,7 @@
 </section>
 </div>
 
-<script src="{{ url_for('static', filename='unsaved-forms.js', v=app_version) }}"></script>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
 <script src="{{ url_for('static', filename='diagnostic-job.js', v=app_version) }}"></script>
 <script src="{{ url_for('static', filename='iperf3.js', v=app_version) }}"></script>
 </div>

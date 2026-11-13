@@ -9,7 +9,7 @@
 {% set diagnostic_result_endpoint = 'tools.dns_response' %}
 <header class="run-page-heading"><h1>DNS Tester</h1></header>
 {% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
-{% include 'components/diagnostic_job.html' %}
+{% with diagnostic_draft_form='dns-form' %}{% include 'components/diagnostic_job.html' %}{% endwith %}
 {% set dns_has_results = results is not none or load_result is not none %}
 <div class="tool-workspace dns-tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if dns_has_results else 'setup' }}">
 <section class="tool-runbar" data-tool-runbar {% if not dns_has_results %}hidden{% endif %} aria-label="DNS result controls">
@@ -60,7 +60,7 @@
   <form
     class="dns-workspace-form"
     method="post"
-    id="dns-form"
+    id="dns-form" data-unsaved-form
     data-dns-max-load-queries="{{ load_limits.queries }}"
     data-dns-max-load-servers="{{ load_limits.servers }}"
     data-loading-message="{{ 'Queueing controlled DNS load test…' if form.mode == 'load' else 'Queueing DNS comparison…' }}"
@@ -237,13 +237,14 @@
       <thead><tr><th>Query</th><th>Resolver</th><th>Type</th><th>Status</th><th>Answers</th><th>Response</th></tr></thead>
       <tbody>
         {% for result in results %}
+        {% set response_ms = result.response_ms|default(none) %}
         <tr>
           <td>{% if result.host_label %}<strong>{{ result.host_label }}</strong><br>{% endif %}<code>{{ result.host }}</code></td>
           <td>{% if result.server_label %}<strong>{{ result.server_label }}</strong><br>{% endif %}<code>{{ result.server }}</code></td>
           <td>{{ result.record_type }}</td>
           <td><span class="pill {{ 'success' if result.status == 'success' else 'error' }}">{{ result.status }}</span></td>
-          <td>{% if result.answers %}{% for answer in result.answers %}<code class="dns-answer">{{ answer }}</code>{% endfor %}{% else %}<span title="{{ result.error|default('') }}">—</span>{% endif %}</td>
-          <td><strong>{{ result.response_ms }} ms</strong></td>
+          <td>{% if result.answers %}{% for answer in result.answers %}<code class="dns-answer">{{ answer }}</code>{% endfor %}{% elif not result.error %}—{% endif %}{% if result.error %}<p class="field-note dns-answer-error">{{ result.error }}</p>{% endif %}</td>
+          <td><strong>{% if response_ms is not none %}{{ response_ms }} ms{% else %}—{% endif %}</strong></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -302,4 +303,5 @@
 <script src="{{ url_for('static', filename='diagnostic-job.js', v=app_version) }}"></script>
 <script src="{{ url_for('static', filename='tool-results-workspace.js', v=app_version) }}"></script>
 <script src="{{ url_for('static', filename='dns-response.js', v=app_version) }}"></script>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
 {% endblock %}

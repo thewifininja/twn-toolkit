@@ -23,7 +23,7 @@ def test_history_is_compact_escaped_sorted_and_scoped_to_agent_url(app):
     assert '<script>bad' not in page
     assert 'Unconfirmed' in page and 'pill warning' in page
     assert 'href="/agents/fixture/newer"' in page
-    assert 'aria-label="View Preview · Branch · Today"' in page
+    assert 'aria-label="View result for Preview · Branch · Today"' in page
 
 
 def test_diagnostic_links_use_existing_scoped_route_and_toolkit_timezone(app):
@@ -65,3 +65,16 @@ def test_certificate_history_preserves_environment_and_failed_request_action(app
     assert 'pill warning recent-run-state">Validating' in page
     assert page.count('>Delete</button>')==1
     assert 'onsubmit="return confirm(\'Delete this failed ACME request?\');"' in page
+
+
+def test_old_active_history_is_visible_before_newer_terminal_results(app):
+    with app.test_request_context('/'):
+        page = render_template('components/recent_runs.html', diagnostic_label='Fixture run',
+            diagnostic_result_endpoint='tools.port_scanner', diagnostic_recent=[
+                {'id': 'new-finished', 'state': 'succeeded', 'created': 200},
+                {'id': 'old-running', 'state': 'running', 'created': 1},
+                {'id': 'new-running', 'state': 'queued', 'created': 100}])
+    assert 'data-recent-active-count>2 in progress' in page
+    assert page.index('job=new-running') < page.index('job=old-running') < page.index('job=new-finished')
+    assert 'View progress for Fixture run' in page
+    assert 'View result for Fixture run' in page

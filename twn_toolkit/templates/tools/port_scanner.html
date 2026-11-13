@@ -9,7 +9,7 @@
 {% set diagnostic_result_endpoint = 'tools.port_scanner' %}
 <header class="run-page-heading"><h1>TCP Port Scanner</h1></header>
 {% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
-{% include 'components/diagnostic_job.html' %}
+{% with diagnostic_draft_form='port-scan-form' %}{% include 'components/diagnostic_job.html' %}{% endwith %}
 
 {% set has_results = stats is not none %}
 <div class="tool-workspace" data-tool-workspace data-tool-state="{{ 'results' if has_results else 'setup' }}">
@@ -22,7 +22,7 @@
   {% if error %}<div class="message error">{{ error }}</div>{% endif %}
   {{ case_recorded_notice(journal_event) }}
 
-  <form class="compact-tool-form" method="post" id="port-scan-form" data-loading-message="Queueing TCP scan…">
+  <form class="compact-tool-form" method="post" id="port-scan-form" data-unsaved-form data-loading-message="Queueing TCP scan…">
     <div class="compact-tool-config-grid port-scan-config-grid">
       <article class="compact-tool-config-card compact-tool-source-card port-inline-profile" data-kind="hosts" data-save-url="{{ url_for('tools.save_port_scan_profile', kind='hosts') }}" data-delete-url="{{ url_for('tools.delete_port_scan_profile', kind='hosts') }}">
         <header>
@@ -161,4 +161,5 @@
 <script src="{{ url_for('static', filename='port-scanner.js') }}"></script>
 <script src="{{ url_for('static', filename='diagnostic-job.js') }}"></script>
 </div>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
 {% endblock %}

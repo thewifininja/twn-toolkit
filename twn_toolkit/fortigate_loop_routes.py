@@ -23,7 +23,7 @@ def register_loop_routes(app, profiles):
         store = diagnostic_store()
         connections = app.extensions['remote_connection_store']
         user = g.current_user
-        hosts = connections.library_for_user(user['id'], is_admin=bool(user.get('is_admin')), host_page=1)['hosts']
+        hosts = connections.library_for_user(user['id'], is_admin=bool(user.get('is_admin')))['hosts']
         if request.method == 'POST':
             suppress_audit_event()
             profile = profiles.get(request.form.get('profile', ''))

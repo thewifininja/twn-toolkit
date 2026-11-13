@@ -22,7 +22,8 @@ from .profiles import NTPHostProfileStore
 def register_ntp_routes(tools_bp: Blueprint) -> None:
     @tools_bp.route("/ntp-test", methods=["GET", "POST"])
     def ntp_test():
-        form = {"hosts": "", "port": "123", "timeout": "3", "samples": "4"}
+        form = {"hosts": "", "port": "123", "timeout": "3", "samples": "4",
+                "host_profile": "", "profile_name": ""}
         results = None
         journal_event = None
         error = ""
@@ -39,6 +40,8 @@ def register_ntp_routes(tools_bp: Blueprint) -> None:
                 "port": request.form.get("port", "123").strip(),
                 "timeout": request.form.get("timeout", "3").strip(),
                 "samples": request.form.get("samples", "4").strip(),
+                "host_profile": request.form.get("host_profile", "").strip(),
+                "profile_name": request.form.get("profile_name", ""),
             }
             try:
                 targets = parse_ping_targets(form["hosts"], limit=20)

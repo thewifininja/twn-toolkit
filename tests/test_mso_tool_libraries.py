@@ -100,7 +100,8 @@ def test_shared_library_http_save_rename_and_stale_guard(tmp_path, endpoint, kin
     if response.is_json:assert b'http-secret-fixture' not in response.data
 
 
-def test_shared_matrix_action_save_is_guarded_and_replicates_as_one_library(tmp_path):
+@pytest.mark.parametrize('save_action', ['save_host_matrix', 'save_host_matrix_continue'])
+def test_shared_matrix_action_save_is_guarded_and_replicates_as_one_library(tmp_path, save_action):
     from twn_toolkit.app import create_app
     from twn_toolkit.auth import AuthStore
     from twn_toolkit.ssh_commandlets import SSHHostMatrixStore
@@ -109,7 +110,7 @@ def test_shared_matrix_action_save_is_guarded_and_replicates_as_one_library(tmp_
     auth=AuthStore(tmp_path);auth.create_user('reviewer','Temporary fixture password',is_admin=True)
     app=create_app(str(tmp_path));client=app.test_client()
     client.post('/login',data={'username':'reviewer','password':'Temporary fixture password'})
-    response=client.post('/tools/multi-ssh',data={'action':'save_host_matrix','host_matrix_name':'Routers','matrix':'Host,Name\n192.0.2.1,Router','mso_kind':'ssh.matrix','mso_enabled':'true'})
+    response=client.post('/tools/multi-ssh',data={'action':save_action,'host_matrix_name':'Routers','matrix':'Host,Name\n192.0.2.1,Router','mso_kind':'ssh.matrix','mso_enabled':'true'})
     store=SSHHostMatrixStore(tmp_path);saved=store.mso_store().profiles(metadata=True)[0]
     assert saved['mso']['enabled']
     data={'action':'save_matrix_action','host_matrix_original_name':'Routers','matrix_action_name':'Read version','commands':'show version','command_timeout':'30','mso_kind':'ssh.matrix','mso_id':saved['mso']['id'],'mso_version':saved['mso']['version']}

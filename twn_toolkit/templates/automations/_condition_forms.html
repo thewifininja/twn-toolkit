@@ -1,7 +1,8 @@
 {% from "components/ui.html" import host_range_guidance %}
-{% macro condition_form(values, definition=none) %}
+{% macro condition_form(values, definition=none, builder=false) %}
   {% set config = definition.config if definition else values %}
-  <form data-unsaved-form data-unsaved-initial="{{ 'true' if form_error and form_section == 'condition' and not definition else 'false' }}" class="form automation-form" method="post" action="{{ url_for('save_automation_condition') }}">
+  <form {% if builder %}data-automation-prerequisite-form="condition" id="automation-prerequisite-condition-form"{% endif %} data-unsaved-form data-unsaved-initial="{{ 'true' if form_error and form_section == 'condition' and not definition else 'false' }}" class="form automation-form" method="post" action="{{ url_for('save_automation_condition') }}">
+    {% if builder %}<input type="hidden" name="response_mode" value="builder">{% endif %}
     {% set definition_id = definition.id if definition else values.get('condition_definition_id', '') %}
     {% if definition_id %}<input type="hidden" name="condition_definition_id" value="{{ definition_id }}">{% endif %}
     <label>Condition name
@@ -223,6 +224,6 @@
       </div>
       <p class="field-note">Connection failures, expired certificates, and not-yet-valid certificates always fail. The additional policy checks can be relaxed for private or self-signed infrastructure.</p>
     </div>
-    <div class="button-row"><button type="submit">{{ 'Update condition' if definition_id else 'Save condition' }}</button></div>
+    <div class="button-row" {% if builder %}hidden{% endif %}><button type="submit">{{ 'Save and use condition' if builder else 'Update condition' if definition_id else 'Save condition' }}</button></div>
   </form>
 {% endmacro %}

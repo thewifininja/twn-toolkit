@@ -32,17 +32,20 @@
         </dl>
       </div>
     </section>
-  {% else %}
-    <section class="panel investigation-create-panel">
+  {% endif %}
+
+  {% if not open_investigation or case_error %}
+    <details class="panel investigation-create-panel" {% if not investigations or case_error %}open{% endif %}><summary>Start a new case</summary>
       {{ section_header("Start a case", "Give the work a durable name before running the first diagnostic.", "New case") }}
-      <form method="post" action="{{ url_for('create_investigation') }}" class="form-grid investigation-create-form">
+      {% if case_error %}<p class="message error" role="alert">{{ case_error }} Your title and starting context are kept below.</p>{% if open_investigation and not open_investigation.can_manage_case %}<p class="field-note">You are a collaborator on the current case; its owner controls closing it. Your new-case draft remains below.</p>{% endif %}{% endif %}
+      <form data-unsaved-form data-unsaved-initial="{{ 'true' if case_error else 'false' }}" method="post" action="{{ url_for('create_investigation') }}" class="form-grid investigation-create-form">
         <div class="investigation-create-fields">
           <label class="investigation-create-title">Case title
-            <input name="title" maxlength="120" required placeholder="Branch office intermittent outage">
+            <input name="title" value="{{ case_form.get('title', '') }}" maxlength="120" required placeholder="Branch office intermittent outage">
           </label>
           <label>Starting context
             <small>Capture what is affected, when it began, and anything already known.</small>
-            <textarea name="description" rows="5" maxlength="2000" placeholder="Users at the branch report intermittent access after the firewall change…"></textarea>
+            <textarea name="description" rows="5" maxlength="2000" placeholder="Users at the branch report intermittent access after the firewall change…">{{ case_form.get('description', '') }}</textarea>
           </label>
         </div>
         <footer class="investigation-create-actions">
@@ -53,22 +56,8 @@
           <button type="submit">Open case</button>
         </footer>
       </form>
-    </section>
+    </details>
   {% endif %}
-
-  <details class="panel investigation-import-panel">
-    <summary>
-      <span><strong>Import a portable case</strong><small>Transfer a complete case exported from another toolkit instance.</small></span>
-      <span aria-hidden="true">▾</span>
-    </summary>
-    <form method="post" action="{{ url_for('import_investigation_case') }}" enctype="multipart/form-data" class="investigation-import-form">
-      <label>Portable case archive
-        <input type="file" name="case_archive" accept=".twncase,application/zip" required>
-        <small>The archive and every evidence hash are verified before import. Original attribution is preserved; foreign users are not granted access.</small>
-      </label>
-      <button type="submit">Import case</button>
-    </form>
-  </details>
 
   <section class="panel investigation-library">
     {{ section_header("Case history", "Owned and shared cases remain available as a durable technical record.", "Accessible journal") }}
@@ -99,5 +88,24 @@
       {% call empty_state("No cases yet", "Start one above before beginning your next troubleshooting session.") %}{% endcall %}
     {% endif %}
   </section>
+
+
+
+  <details class="panel investigation-import-panel">
+    <summary>
+      <span><strong>Import a portable case</strong><small>Transfer a complete case exported from another toolkit instance.</small></span>
+      <span aria-hidden="true">▾</span>
+    </summary>
+    <form method="post" action="{{ url_for('import_investigation_case') }}" enctype="multipart/form-data" class="investigation-import-form">
+      <label>Portable case archive
+        <input type="file" name="case_archive" accept=".twncase,application/zip" required>
+        <small>The archive and every evidence hash are verified before import. Original attribution is preserved; foreign users are not granted access.</small>
+      </label>
+      <button type="submit">Import case</button>
+    </form>
+  </details>
+
+
 </div>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
 {% endblock %}

@@ -16,6 +16,7 @@
   const focusState = document.getElementById("remote-terminal-focus-state");
   const jumpLiveButton = document.getElementById("remote-terminal-jump-live");
   const jumpLiveLabel = document.getElementById("remote-terminal-jump-live-label");
+  const connectAgainButton = document.getElementById("remote-terminal-connect-again");
   const stopButton = document.getElementById("remote-terminal-stop");
   const popoutButton = document.getElementById("remote-terminal-popout");
   const saveHostButton = document.getElementById("remote-terminal-save-host");
@@ -66,6 +67,8 @@
   });
   let sessions = JSON.parse(initial.textContent || "[]");
   let selected = null;
+  let startPending = false;
+  let recentPending = false;
   let cursor = 0;
   let pollTimer = null;
   let pollGeneration = 0;
@@ -100,6 +103,33 @@
     : null;
 
   if (form) form.addEventListener("submit", startSession);
+  connectAgainButton?.addEventListener("click", () => {
+    if (selected && !active(selected)) requestConnectionAgain(selected);
+  });
+  document.querySelectorAll('[data-refresh-remote-sessions]').forEach((button) => {
+    button.addEventListener('click', () => refreshRecentSessions(button));
+  });
+  function requestConnectionAgain(session) {
+    document.dispatchEvent(new CustomEvent('twn:remote-connect-again', {detail: {...session}}));
+  }
+  async function refreshRecentSessions(button) {
+    if (recentPending || !form?.dataset.sessionsUrl) return;
+    recentPending = true;
+    button.disabled = true;
+    try {
+      const response = await fetch(form.dataset.sessionsUrl, {headers: {Accept: 'application/json'}, cache: 'no-store', signal: AbortSignal.timeout(10000)});
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data.sessions)) throw new Error(data.error || 'Recent sessions could not be refreshed.');
+      sessions = data.sessions;
+      renderList(true);
+      showMessage('Recent sessions refreshed. Check for an existing connection before starting another.', 'success');
+    } catch (error) {
+      showMessage('Recent sessions could not be refreshed. Your current shell and connection draft remain here. Try Refresh recent sessions again.');
+    } finally {
+      recentPending = false;
+      button.disabled = false;
+    }
+  }
   surface.addEventListener("click", () => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) focusTerminal();
@@ -334,6 +364,16 @@
     download.title = "Download scrollback";
     download.append(terminalActionIcon("download"));
     actions.append(open, download);
+    if (form && !active(session)) {
+      const again = document.createElement('button');
+      again.type = 'button';
+      again.className = 'secondary compact remote-terminal-connect-again';
+      card.classList.add('with-recovery');
+      again.textContent = 'Connect again…';
+      again.setAttribute('aria-label', `Connect again to ${session.title}`);
+      again.addEventListener('click', () => requestConnectionAgain(session));
+      actions.append(again);
+    }
     if (datastoreDialog) {
       const save = document.createElement("button");
       save.type = "button";
@@ -433,6 +473,7 @@
     try {
       await startPayload(payload, {button: startButton, status: startStatus});
       document.getElementById("remote-terminal-password").value = "";
+      document.dispatchEvent(new Event("twn:quick-connect-completed"));
     } catch (_error) {
       // startPayload renders the actionable message beside the initiating control.
     }
@@ -442,36 +483,69 @@
     const button = controls.button || null;
     const status = controls.status || null;
     if (!form?.dataset.startUrl) throw new Error("New sessions must be started from the full workspace.");
+    if (startPending) {
+      const message = 'A connection request is already in progress. Wait for its outcome before starting another.';
+      if (status) status.textContent = message; else showMessage(message);
+      throw new Error(message);
+    }
+    startPending = true;
+    document.dispatchEvent(new CustomEvent('twn:remote-start-pending', {detail: true}));
     if (button) button.disabled = true;
     if (status) status.textContent = "Starting remote session…";
+    let admissionConfirmed = false;
+    let admittedSession = null;
+    const quickControls = button === startButton ? Array.from(form.elements, (field) => [field, field.disabled]) : [];
+    quickControls.forEach(([field]) => { field.disabled = true; });
+    if (quickControls.length) window.TwnUnsavedForms?.capture(form);
     try {
       const response = await fetch(form.dataset.startUrl, {
         method: "POST",
         headers: {"Accept": "application/json", "Content-Type": "application/json"},
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(20000),
       });
+      if (!response.headers.get('content-type')?.includes('application/json')) throw new Error('Request outcome not confirmed.');
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "The remote session could not be started.");
-      upsert(data.session);
-      renderList();
-      await openSession(data.session, {reveal: true, focus: true});
-      if (status) {
-        status.textContent = data.session.record_transcript
-          ? "Started with transcript capture attached to the active case."
-          : data.session.investigation_id
-            ? "Started with session activity attached to the active case."
-            : "Session started.";
+      if (!response.ok) {
+        admissionConfirmed = response.status < 500;
+        throw new Error(data.error || "The remote session could not be started.");
       }
-      if (window.TwnLiveTools) window.TwnLiveTools.refresh();
-      document.dispatchEvent(new CustomEvent("twn:remote-session-started", {detail: data.session}));
-      return data.session;
+      if (!data.session?.id) throw new Error('Request outcome not confirmed.');
+      admittedSession = data.session;
     } catch (error) {
-      if (status) status.textContent = error.message;
-      else showMessage(error.message);
+      const message = admissionConfirmed ? error.message : 'The request outcome was not confirmed. Do not connect again until you check Recent sessions with Refresh recent sessions. Your connection draft remains here.';
+      if (status) status.textContent = message;
+      else showMessage(message);
       throw error;
     } finally {
+      // Admission ends at the POST receipt, never at a later terminal-output GET.
+      quickControls.forEach(([field, disabled]) => { field.disabled = disabled; });
+      if (quickControls.length) window.TwnUnsavedForms?.settle(form);
+      startPending = false;
+      document.dispatchEvent(new CustomEvent('twn:remote-start-pending', {detail: false}));
       if (button) button.disabled = false;
     }
+    const acceptedMessage = admittedSession.record_transcript
+      ? 'Session accepted with transcript capture attached to the active case.'
+      : admittedSession.investigation_id
+        ? 'Session accepted with activity attached to the active case.'
+        : 'Session accepted. Terminal output loads separately.';
+    if (status) status.textContent = acceptedMessage;
+    // A view failure must not turn confirmed admission into a retryable failure,
+    // retain a one-time password, or keep new-connection controls locked.
+    try {
+      upsert(admittedSession);
+      renderList();
+      openSession(admittedSession, {reveal: true, focus: true}).catch(() => {
+        if (selected?.id !== admittedSession.id) return;
+        showMessage('The session was accepted, but its terminal view could not load. Open it from Recent sessions; do not start a replacement to restore output.');
+      });
+    } catch (_error) {
+      showMessage('The session was accepted, but its terminal view could not load. Refresh Recent sessions to open the accepted shell.');
+    }
+    document.dispatchEvent(new CustomEvent("twn:remote-session-started", {detail: admittedSession}));
+    if (window.TwnLiveTools) Promise.resolve().then(() => window.TwnLiveTools.refresh()).catch(() => {});
+    return admittedSession;
   }
 
   async function openSession(session, options = {}) {
@@ -483,6 +557,7 @@
     clearTimeout(checkpointTimer);
     checkpointTimer = null;
     pollGeneration += 1;
+    const openingGeneration = pollGeneration;
     selected = session;
     pollMessage.hidden = true;
     cursor = 0;
@@ -495,7 +570,8 @@
     terminal.reset(sessionColumns(session), sessionRows(session));
     if (reveal) workspace.scrollIntoView({behavior: "smooth", block: "start"});
     updateWorkspace(session);
-    await pollOutput({bootstrap: true, generation: pollGeneration});
+    await pollOutput({bootstrap: true, generation: openingGeneration});
+    if (openingGeneration !== pollGeneration || selected?.id !== session.id) return;
     if (
       focusAfterSync
       && !synchronizing
@@ -523,6 +599,7 @@
       if (!data) {
         const response = await fetch(`${pollingSession.output_url}?after=${requestCursor}${suffix}`, {
           headers: {"Accept": "application/json"},
+          signal: AbortSignal.timeout(10000),
         });
         data = await response.json();
         if (!response.ok) throw new Error(data.error || "Terminal output is unavailable.");
@@ -575,7 +652,9 @@
       }
     } catch (error) {
       if (generation === pollGeneration && selected?.id === pollingSession.id) {
-        pollMessage.textContent = error.message;
+        const reason = ['TimeoutError', 'AbortError'].includes(error.name) ? 'The output request timed out.' : error.message || 'Terminal output could not be loaded.';
+        const recovery = active(selected) ? 'Live output will retry automatically; you can also reopen the session from Recent sessions.' : 'Open this retained session again from Recent sessions to retry loading its output.';
+        pollMessage.textContent = `${reason} The session has not been restarted; its connection state is shown above. ${recovery}`;
         pollMessage.hidden = false;
       }
     } finally {
@@ -1100,6 +1179,7 @@
       button.hidden = !available;
       button.disabled = !telnetCredentialAvailable || !available;
     });
+    if (connectAgainButton) connectAgainButton.hidden = isActive;
     stopButton.hidden = !isActive;
     stopButton.disabled = !isActive;
     if (popoutButton) popoutButton.hidden = !isActive;
@@ -1442,6 +1522,7 @@
   window.TwnRemoteTerminal = {
     start: startPayload,
     open: openSession,
+    startPending: () => startPending,
     sessions: () => sessions.map((session) => ({...session})),
   };
 })();

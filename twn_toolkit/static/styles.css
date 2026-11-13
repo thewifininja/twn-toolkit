@@ -22152,7 +22152,10 @@ body.remote-terminal-resizing * {
 }
 
 .multi-ssh-runbook {
+  container: ssh-runbook / inline-size;
+  min-width: 0;
   display: grid;
+  grid-auto-rows: max-content;
   gap: 6px;
   max-height: min(54vh, 440px);
   overflow-y: auto;
@@ -22171,6 +22174,7 @@ body.remote-terminal-resizing * {
 }
 
 .multi-ssh-runbook-row > span:nth-of-type(2) {
+  overflow-wrap: anywhere;
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -22223,12 +22227,23 @@ body.remote-terminal-resizing * {
 }
 
 .multi-ssh-preflight-list > div > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
   display: grid;
   gap: 2px;
 }
 
 .multi-ssh-preflight-list small {
   color: var(--muted);
+}
+
+.multi-ssh-host-choices-list {
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.75rem;
+  max-height: 24rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
 }
 
 .multi-ssh-exact-plan {
@@ -22364,6 +22379,23 @@ body.remote-terminal-resizing * {
   }
 }
 
+/* A desktop sidebar and the run's second column can leave a narrow action
+   list even when the viewport is wide. Reflow to the list's available width. */
+@container ssh-runbook (max-width: 460px) {
+  .multi-ssh-runbook-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .multi-ssh-runbook-row > :is(.pill, .compact-actions) {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .multi-ssh-runbook-row .compact-actions {
+    flex-wrap: wrap;
+  }
+}
+
 @media (max-width: 460px) {
   .multi-ssh-workspace-tabs > button {
     font-size: 0.82rem;
@@ -22459,3 +22491,83 @@ body.remote-terminal-resizing * {
   margin-block: 0.5rem;
 }
 .remote-library-selection-review li > span { min-width: 0; }
+
+/* Keep the first task and the final action visible in the existing workspace. */
+.multi-ssh-intro { align-items: center; display: flex; justify-content: space-between; gap: 12px; }
+.multi-ssh-intro p { margin: 0; }
+.multi-ssh-matrix-facts { min-height: 0; }
+.remote-host-dialog .remote-terminal-dialog-form,
+.remote-quick-connect-dialog .remote-terminal-dialog-form { padding-bottom: 0; }
+.remote-host-dialog .remote-terminal-dialog-footer-split,
+.remote-quick-connect-dialog .remote-terminal-dialog-form > footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding-block: 12px;
+}
+.remote-host-organization > summary,
+.investigation-team-panel > summary,
+.investigation-merge-entry > summary,
+.investigation-create-panel > summary { cursor: pointer; font-weight: 600; }
+.remote-host-organization[open] > summary,
+.investigation-team-panel[open] > summary,
+.investigation-merge-entry[open] > summary,
+.investigation-create-panel[open] > summary { margin-bottom: 16px; }
+
+/* Bulk SSH command composition remains separate from its final review. */
+.multi-ssh-inline-fields { grid-column: 1 / -1; min-width: 0; }
+.multi-ssh-inline-fields > .form { padding-top: 10px; }
+.multi-ssh-run-form > .multi-ssh-workspace-card { margin-bottom: 12px; }
+
+/* Native disclosures must not inherit grid tracks for their hidden contents. */
+details.multi-ssh-exact-plan.multi-ssh-workspace-card {
+  display: block;
+  padding: 0;
+}
+
+details.multi-ssh-exact-plan.multi-ssh-workspace-card > summary {
+  margin: 0;
+  padding: 12px;
+}
+
+details.multi-ssh-exact-plan.multi-ssh-workspace-card[open] > :not(summary) {
+  margin: 0 12px 12px;
+}
+
+/* Recovery keeps its text action discoverable without squeezing host identity. */
+@media (max-width: 900px) {
+  .remote-terminal-session-card.with-recovery { grid-template-columns: minmax(0, 1fr); }
+  .remote-terminal-session-card.with-recovery .remote-terminal-session-card-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+
+/* Keep admission actions visible while a connection review or error grows. */
+.remote-quick-connect-dialog .remote-terminal-dialog-form > footer { flex-wrap: wrap; }
+.remote-quick-connect-dialog footer .tool-status {
+  flex: 1 1 100%;
+  margin: 0;
+  max-height: 7em;
+  min-width: 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.remote-quick-connect-dialog footer .tool-status:empty { display: none; }
+
+/* Reused automation library editors keep their save/back controls reachable. */
+dialog.automation-prerequisite-dialog[open] { display: flex; flex-direction: column; width: min(70rem, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: hidden; }
+.automation-prerequisite-dialog > header, .automation-prerequisite-dialog > footer { flex: none; padding: 16px; }
+.automation-prerequisite-dialog > header { border-bottom: 1px solid var(--line); }
+.automation-prerequisite-dialog > footer { border-top: 1px solid var(--line); }
+.automation-prerequisite-dialog > footer p { margin: 0 0 8px; overflow-wrap: anywhere; }
+.automation-prerequisite-body { min-height: 0; overflow: auto; padding: 16px; }
+.automation-prerequisite-body .automation-form { margin: 0; }
+
+/* A bounded saved-note confirmation must retain lines without widening a dialog. */
+[data-note-saved-preview] { overflow-wrap: anywhere; white-space: pre-wrap; }
+
+/* DNS failure text stays readable without widening the results table. */
+.dns-answer-error { overflow-wrap: anywhere; }

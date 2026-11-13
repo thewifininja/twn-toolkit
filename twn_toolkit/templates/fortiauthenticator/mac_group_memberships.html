@@ -3,7 +3,7 @@
 {% block content %}
 <header class="run-page-heading"><h1>MAC Group Memberships</h1></header>
 {% if diagnostic_recent is defined or appliance_recent is defined %}{% include 'components/recent_runs.html' %}{% endif %}
-{% include 'components/diagnostic_job.html' %}
+{% with diagnostic_draft_form='fac-memberships-form' %}{% include 'components/diagnostic_job.html' %}{% endwith %}
 {% from 'components/ui.html' import case_recorded_notice %}
 {{ case_recorded_notice(journal_event) }}
 <section class="panel tool-panel">
@@ -13,7 +13,7 @@
   </div>
   {% if profiles %}
     <form
-      class="form"
+      class="form" data-unsaved-form id="fac-memberships-form"
       method="post"
       action="{{ url_for('fortiauthenticator_mac_group_memberships') }}"
       data-loading-message="Queueing FortiAuthenticator group memberships…"
@@ -107,4 +107,5 @@
   </section>
 {% endif %}
 <script src="{{ url_for('static', filename='diagnostic-job.js') }}"></script>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
 {% endblock %}

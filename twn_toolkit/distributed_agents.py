@@ -555,6 +555,13 @@ def _agent_record(row: sqlite3.Row) -> dict[str, Any]:
         and last_seen
         and time.time() - last_seen <= AGENT_ONLINE_SECONDS
     )
+    item["gui_compatibility_status"] = agent_gui_compatibility_status(item)
+    item["gui_compatibility_label"] = {
+        "ready": "GUI compatible",
+        "awaiting_report": "Waiting for Agent status",
+        "unconfirmed": "GUI compatibility unconfirmed",
+        "mismatch": "GUI protocol mismatch",
+    }[item["gui_compatibility_status"]]
     item["gui_compatibility_error"] = agent_gui_compatibility_error(item)
     item["gui_compatible"] = not item["gui_compatibility_error"]
     return item
@@ -564,13 +571,46 @@ def _protocol_number(value):
     return value if type(value) is int and 0 <= value <= 65535 else 0
 
 
+def agent_gui_compatibility_status(agent):
+    """Describe reported GUI support without inferring a build or certificate fault."""
+    job = _protocol_number(agent.get("job_protocol_version"))
+    gui = _protocol_number(agent.get("gui_protocol_version"))
+    if job == JOB_PROTOCOL_VERSION and gui == GUI_PROTOCOL_VERSION:
+        return "ready"
+    # Enrollment itself updates last_seen_at. It is not an authenticated status
+    # report and supplies no protocol or capability information.
+    if (agent.get("state") == "approved"
+            and not agent.get("protocol_version")
+            and not agent.get("toolkit_version")
+            and not agent.get("capabilities")
+            and not job and not gui
+            and float(agent.get("last_seen_at") or 0) <= float(agent.get("approved_at") or 0)):
+        return "awaiting_report"
+    if job not in (0, JOB_PROTOCOL_VERSION) or gui not in (0, GUI_PROTOCOL_VERSION):
+        return "mismatch"
+    return "unconfirmed"
+
+
 def agent_gui_compatibility_error(agent):
-    if (_protocol_number(agent.get("job_protocol_version")) != JOB_PROTOCOL_VERSION
-            or _protocol_number(agent.get("gui_protocol_version")) != GUI_PROTOCOL_VERSION):
-        return ("GUI compatibility is unconfirmed or unsupported. Upgrade the Mainframe and Agent "
-                "to compatible versions, restart their web and automation/distributed workers, "
-                "and wait for a new Agent heartbeat. Re-enrollment is not required.")
-    return ""
+    status = agent_gui_compatibility_status(agent)
+    if status == "ready":
+        return ""
+    if status == "awaiting_report":
+        return ("GUI compatibility is not known yet. Approval succeeded; waiting for the Agent's "
+                "first authenticated status report. Wait for the Agent worker to connect, then "
+                "refresh this page. If this persists, check its worker and connection status. "
+                "No version mismatch has been established.")
+    required = f"Mainframe requires job protocol {JOB_PROTOCOL_VERSION} and GUI protocol {GUI_PROTOCOL_VERSION}. "
+    if status == "unconfirmed":
+        reason = "GUI compatibility is unconfirmed: the Agent's latest report has missing or invalid protocol information. "
+    else:
+        reason = ("GUI compatibility has a protocol mismatch: the Agent reported job protocol "
+                  f"{_protocol_number(agent.get('job_protocol_version')) or 'not reported/invalid'} and GUI protocol "
+                  f"{_protocol_number(agent.get('gui_protocol_version')) or 'not reported/invalid'}. ")
+    return (reason + required + "Check the running Mainframe and Agent builds and restart outdated "
+            "web and automation/distributed workers, then wait for a new Agent status report. "
+            "Re-enrollment does not fix a protocol mismatch. This check does not diagnose "
+            "certificate or connection problems.")
 
 
 def agent_supports_capability(

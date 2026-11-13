@@ -74,9 +74,7 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
     @tools_bp.get("/remote-terminal")
     def remote_terminal():
         user = _current_user()
-        sessions = _manager().sessions_for_user(
-            user["id"], include_finished=True
-        )
+        sessions = _recent_and_active_sessions(user["id"])
         return render_template(
             "tools/remote_terminal.html",
             remote_sessions=[_public_session(item) for item in sessions],
@@ -92,6 +90,15 @@ def register_remote_terminal_routes(tools_bp: Blueprint) -> None:
         suppress_audit_event()
         user = _current_user()
         return jsonify({"library": _connection_library(user["id"])})
+
+    @tools_bp.get("/remote-terminal/sessions")
+    def remote_terminal_sessions():
+        """Refresh retained state without starting or reconnecting any shell."""
+        suppress_audit_event()
+        sessions = _recent_and_active_sessions(_current_user()["id"])
+        response = jsonify({"sessions": [_public_session(item) for item in sessions]})
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @tools_bp.get("/remote-terminal/devices")
     def remote_terminal_devices():
@@ -1367,6 +1374,15 @@ def _parse_remote_host_import(
         except (RemoteConnectionError, TypeError, ValueError) as exc:
             errors.append({"row": line_number, "message": str(exc)})
     return parsed_rows, errors
+
+
+def _recent_and_active_sessions(user_id: str) -> list[dict[str, object]]:
+    """Use one bounded view for first load and refresh without hiding live shells."""
+    manager = _manager()
+    recent = manager.sessions_for_user(user_id, include_finished=True)
+    active = manager.sessions_for_user(user_id, include_finished=False)
+    sessions = {str(item["id"]): item for item in [*recent, *active]}
+    return sorted(sessions.values(), key=lambda item: float(item["created_at"]), reverse=True)
 
 
 def _connection_store() -> RemoteConnectionStore:

@@ -4,10 +4,10 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='fortigate-dhcp.css') }}">
 {{ workspace_header('DHCP inventory', 'Explore DHCP configuration across one FortiGate or its Security Fabric.', eyebrow='FortiGate · Read only') }}
 {% include 'components/recent_runs.html' %}
-{% if not data %}{% include 'components/diagnostic_job.html' %}{% endif %}
+{% if not data %}{% with diagnostic_draft_form='dhcp-discovery-form' %}{% include 'components/diagnostic_job.html' %}{% endwith %}{% endif %}
 {% if data %}<details class="panel dhcp-new-discovery"><summary>New discovery · {{ selected_name }}</summary>{% else %}<section class="panel">{% endif %}
 {% call section_header('Discover DHCP', 'Each run saves a snapshot. Refresh by running discovery again.', compact=true) %}<a class="button-link secondary" href="{{ url_for('fortigate_home') }}">FortiGate home</a>{% endcall %}
-<form method="post" action="{{ url_for('fortigate_dhcp') }}" class="form dhcp-discovery" data-loading-message="Queueing DHCP discovery…">
+<form method="post" action="{{ url_for('fortigate_dhcp') }}" class="form dhcp-discovery" data-unsaved-form id="dhcp-discovery-form" data-loading-message="Queueing DHCP discovery…">
 <label>Connection profile<select name="profile" required><option value="">Choose a profile</option>{% for p in profiles %}<option value="{{ p.name }}" {% if p.name == selected_name or (not selected_name and (p.is_default or profiles|length == 1)) %}selected{% endif %}>{{ p.name }}</option>{% endfor %}</select></label>
 <label>Scope<select name="scope"><option value="single" {% if scope == 'single' %}selected{% endif %}>This FortiGate</option><option value="fabric" {% if scope == 'fabric' %}selected{% endif %}>This FortiGate + Fabric</option></select></label>
 <label>VDOM<input name="vdom" value="{{ vdom }}" maxlength="80" placeholder="Profile default"><small class="field-note">Use * for all advertised Fabric VDOMs.</small></label>
@@ -86,4 +86,5 @@
 {% endif %}
 <script src="{{ url_for('static',filename='diagnostic-job.js') }}"></script>
 <script src="{{ url_for('static',filename='fortigate-dhcp.js') }}" defer></script>
+<script src="{{ url_for('static', filename='unsaved-forms.js', v=asset_version) }}"></script>
 {% endblock %}

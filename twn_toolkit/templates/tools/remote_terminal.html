@@ -5,7 +5,7 @@
   <div>
     <span class="eyebrow">Persistent remote access</span>
     <h1>Remote Terminal</h1>
-    <p>Open persistent SSH, Telnet, or locally attached console sessions, and organize reusable connections with per-item availability controls.</p>
+    <p>Connect over SSH, Telnet, or a local console. Saved connections keep reusable settings; Recent sessions restores active shells or shows completed output.</p>
   </div>
   <div class="remote-terminal-primary-actions">
     {% if mso_available %}<a class="button-link secondary" href="{{ url_for('tools.mso_conflicts') }}">MSO conflicts</a>{% endif %}
@@ -105,7 +105,7 @@
           <h2>Recent sessions</h2>
           <p>Restore an active shell or inspect retained scrollback from a completed connection.</p>
         </div>
-        <span id="remote-terminal-session-count">{{ remote_sessions|length }} retained</span>
+        <div class="button-row"><span id="remote-terminal-session-count">{{ remote_sessions|length }} retained</span><button type="button" class="secondary compact" data-refresh-remote-sessions>Refresh recent sessions</button></div>
       </div>
       <div class="remote-terminal-session-list" id="remote-terminal-session-list"></div>
       <p class="empty-state" id="remote-terminal-empty" {% if remote_sessions %}hidden{% endif %}>No remote sessions have been opened yet.</p>
@@ -114,12 +114,14 @@
 </section>
 
 <dialog class="remote-terminal-dialog remote-quick-connect-dialog" id="remote-quick-connect-dialog" aria-labelledby="remote-quick-connect-title">
-  <form class="form remote-terminal-dialog-form" id="remote-terminal-form" data-start-url="{{ url_for('tools.start_remote_terminal_session') }}">
+  <form class="form remote-terminal-dialog-form" id="remote-terminal-form" data-unsaved-form data-start-url="{{ url_for('tools.start_remote_terminal_session') }}" data-sessions-url="{{ url_for('tools.remote_terminal_sessions') }}">
     <header>
       <div><span class="eyebrow">Temporary connection</span><h2 id="remote-quick-connect-title">Quick connect</h2></div>
       <button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button>
     </header>
-    <p class="remote-terminal-dialog-intro">Connect without adding this host to your saved connections. The session remains available for reconnection until it is stopped or expires.</p>
+    <p class="remote-terminal-dialog-intro">Connect without adding this host to your saved connections. You can restore the same active shell from Recent sessions. Once it ends, Connect again reviews a new connection; previous output stays available.</p>
+    <div class="field-note" data-quick-reconnect-note role="status" hidden></div>
+    <button type="button" class="secondary" data-quick-replace-draft hidden>Replace draft with previous connection details</button>
     <section class="remote-terminal-dialog-section">
       <div class="remote-terminal-dialog-section-head">
         <h3>Connection</h3>
@@ -190,7 +192,7 @@
       </div>
     </details>
     <footer>
-      <span class="tool-status" id="remote-terminal-start-status" role="status"></span>
+      <span class="tool-status" id="remote-terminal-start-status" role="status" tabindex="0"></span>
       <button class="secondary" type="button" data-dialog-close>Cancel</button>
       <button id="remote-terminal-start" type="submit">Connect</button>
     </footer>
@@ -228,10 +230,9 @@
     <header><div><span class="eyebrow">Connection library</span><h2 id="remote-host-title">New saved host</h2></div><button class="dialog-close" type="button" data-dialog-close aria-label="Close">×</button></header>
     <p class="remote-terminal-dialog-intro" data-shared-item-note hidden>You are editing a shared item. Changes apply to everyone who uses it. Only its owner can make it private.</p>
     <input id="remote-host-id" type="hidden">
+    <section class="remote-terminal-dialog-section"><h3>Connection</h3>
     <div class="form-grid remote-terminal-dialog-grid">
       <label>Display name<input id="remote-host-name" maxlength="100" required placeholder="Core Switch 01"></label>
-      <label>Folder<select id="remote-host-folder"></select></label>
-      <label class="remote-host-availability-field">Availability<select id="remote-host-visibility"><option value="inherit">Inherit from folder</option><option value="global">Global</option><option value="admins_only">Admins Only</option><option value="private">Private</option></select><small>Top-level hosts inherit Admins Only.</small></label>
       <label>Protocol<select id="remote-host-protocol"><option value="ssh">SSH</option><option value="telnet">Telnet</option><option value="console">Console</option></select></label>
       <div class="form-grid remote-host-target-fields" data-host-network>
         <label class="remote-host-address-field">Hostname or IP address<input id="remote-host-address" maxlength="255" required placeholder="switch01.example.com" autocapitalize="none" spellcheck="false"></label>
@@ -252,6 +253,7 @@
         <label>Flow control<select id="remote-host-console-flow">{% for value in serial_console_options.flow_controls %}<option value="{{ value }}">{{ value|title }}</option>{% endfor %}</select></label>
       </div>
     </div>
+    </section>
     <p class="message warning remote-terminal-telnet-warning" data-host-telnet-warning hidden>Telnet sends terminal traffic without encryption. Assigned credentials are sent only when an operator selects the explicit terminal controls. Use Telnet only on a trusted network.</p>
     <fieldset class="remote-terminal-credential-choice" data-host-credentials>
       <legend>Credential assignment</legend>
@@ -273,7 +275,13 @@
       <label class="check"><input id="remote-host-unknown" type="checkbox"><span>Trust this host key on first connection</span></label>
       <label class="check"><input id="remote-host-legacy" type="checkbox"><span>Allow legacy SSH algorithms</span></label>
     </div>
+    <details class="remote-host-organization"><summary>Folder, availability &amp; notes</summary>
+    <div class="form-grid remote-terminal-dialog-grid">
+      <label>Folder<select id="remote-host-folder"></select></label>
+      <label class="remote-host-availability-field">Availability<select id="remote-host-visibility"><option value="inherit">Inherit from folder</option><option value="global">Global</option><option value="admins_only">Admins Only</option><option value="private">Private</option></select><small>Top-level hosts inherit Admins Only.</small></label>
+    </div>
     <label>Notes <span class="inline-label-note">(optional)</span><textarea id="remote-host-notes" rows="3" maxlength="1000" placeholder="Location, role, maintenance context…"></textarea></label>
+    </details>
     <p class="tool-status" id="remote-host-status" role="status"></p>
     <footer class="remote-terminal-dialog-footer-split">
       <span class="button-row" data-host-existing-actions hidden><button class="secondary" type="button" data-duplicate-host>Duplicate</button><button class="danger" type="button" data-delete-host>Delete</button></span>

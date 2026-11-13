@@ -264,11 +264,11 @@ class SSHCommandletRouteTests(unittest.TestCase):
                 "port": "22",
             }
             initial_page = client.get("/tools/multi-ssh")
-            self.assertIn(b"Fleet command workspace", initial_page.data)
+            self.assertIn(b"Choose hosts, prepare commands, then review before running.", initial_page.data)
             self.assertIn(b"Host matrix", initial_page.data)
-            self.assertIn(b'data-ssh-workspace-tab="hosts">Hosts', initial_page.data)
-            self.assertIn(b'data-ssh-workspace-tab="actions">CLI actions', initial_page.data)
-            self.assertIn(b'data-ssh-workspace-tab="run">Run', initial_page.data)
+            self.assertIn('data-ssh-workspace-tab="hosts">1 · Hosts'.encode(), initial_page.data)
+            self.assertIn('data-ssh-workspace-tab="actions">2 · Commands'.encode(), initial_page.data)
+            self.assertIn('data-ssh-workspace-tab="run">3 · Review &amp; run'.encode(), initial_page.data)
             self.assertIn(b"Raw matrix", initial_page.data)
             self.assertEqual(initial_page.data.count(b"data-ssh-matrix-mode="), 1)
             self.assertIn(b'data-ssh-matrix-toggle', initial_page.data)
@@ -279,7 +279,7 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertIn(b"Add row", initial_page.data)
             self.assertIn(b"Add variable", initial_page.data)
             self.assertIn(b'data-ssh-target-limit="5000"', initial_page.data)
-            self.assertIn(b"Names and hosts stay fixed", initial_page.data)
+            self.assertIn(b"Enter hosts below", initial_page.data)
             self.assertNotIn(b"Name and IP/FQDN stay fixed", initial_page.data)
             self.assertNotIn(b"Basic", initial_page.data)
             self.assertNotIn(b"Advanced", initial_page.data)
@@ -289,7 +289,7 @@ class SSHCommandletRouteTests(unittest.TestCase):
             self.assertIn(b"Replace current rows", initial_page.data)
             self.assertIn(b"data-ssh-matrix data-1p-ignore", initial_page.data)
             self.assertNotIn(b"data-ssh-action-commands", initial_page.data)
-            self.assertIn(b"Save the host matrix first", initial_page.data)
+            self.assertIn(b"Choose and save hosts first", initial_page.data)
             self.assertNotIn(b'name="commandlet_name"', initial_page.data)
             self.assertNotIn(b'name="username"', initial_page.data)
             self.assertNotIn(b'name="password"', initial_page.data)
@@ -829,8 +829,8 @@ class SSHCommandletRouteTests(unittest.TestCase):
             run_workspace = client.get(
                 "/tools/multi-ssh?host_matrix=Branches&workspace=run"
             )
-            self.assertIn(b"No actions in this run", run_workspace.data)
-            self.assertIn(b"0 actions", run_workspace.data)
+            self.assertIn(b"No commands selected", run_workspace.data)
+            self.assertIn(b"0 sets", run_workspace.data)
             self.assertNotIn(b'name="selected_actions"', run_workspace.data)
 
             action_form = {
@@ -845,7 +845,7 @@ class SSHCommandletRouteTests(unittest.TestCase):
                 data={**action_form, "action": "preview"},
             )
             self.assertIn(b"data-ssh-runbook", preview.data)
-            self.assertIn(b"2 actions", preview.data)
+            self.assertIn(b"2 sets", preview.data)
             self.assertIn(b"[timeout=30] show port1", preview.data)
             self.assertIn(b"[timeout=75] get system status", preview.data)
             self.assertLess(
