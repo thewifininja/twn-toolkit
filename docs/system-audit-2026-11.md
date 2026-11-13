@@ -2,9 +2,13 @@
 
 > Follow-up, 2026-11-11: PR #315 (`fa96366`) merged the dependency lock update;
 > its merged-main dependency audit passed. Finding 7 and the original validation
-> ledger below describe the pre-update audit snapshot. Python 3.10 still has the
-> documented exception in `security-advisories.md`. PR #314 has since been
-> rebased onto that main commit with the TLS listener test portability fix.
+> ledger below describe the pre-update audit snapshot. PR #314 was then rebased
+> onto main with the TLS listener test portability fix (#316).
+>
+> Follow-up, 2026-11-12: PR #318 (`11a41e9`) raised the minimum to Python 3.11
+> and retired the Python 3.10 dependency exception; Pillow 13.0.0 and dnspython
+> 2.9.2 are now unconditional. See `security-advisories.md`. References to
+> Python 3.10 below are historical.
 > Current branch validation is recorded in the PR; historical local results
 > below are not validation of the rebased head.
 

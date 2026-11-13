@@ -61,7 +61,8 @@ For every release:
 The initial November audit found advisories in the v0.27.0 locks. PR #315,
 merged as `fa96366`, updates certifi and pyasn1 for all supported Pythons, and
 Pillow and dnspython for Python 3.11+. The dependency-audit job passed on that
-merged commit. Python 3.10 remains subject to the explicit exception above;
-this result does not establish that its dependency set is free of advisories.
+merged commit. At that commit Python 3.10 kept its older Pillow and dnspython
+pins under an explicit exception; PR #318 (`11a41e9`) retired that exception
+with the Python 3.11 minimum, as recorded above.
 
 The original observations remain in [`system-audit-2026-11.md`](system-audit-2026-11.md).
