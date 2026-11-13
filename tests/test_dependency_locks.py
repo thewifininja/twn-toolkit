@@ -53,7 +53,7 @@ class DependencyLockTests(unittest.TestCase):
                 locks.check(root)
 
     def test_development_preserves_runtime_versions_across_supported_markers(self):
-        for version in ("3.10", "3.13", "3.14"):
+        for version in ("3.11", "3.12", "3.13", "3.14"):
             for system, platform in (("Linux", "linux"), ("Darwin", "darwin")):
                 with self.subTest(version=version, system=system):
                     environment = {**default_environment(), "python_version": version,
@@ -64,7 +64,7 @@ class DependencyLockTests(unittest.TestCase):
                     development = active_pins(ROOT / "requirements-dev.txt", environment)
                     self.assertTrue(runtime)
                     self.assertEqual(runtime, {name: development.get(name) for name in runtime})
-                    self.assertEqual("pyasyncore" in runtime, version != "3.10")
+                    self.assertEqual("pyasyncore" in runtime, version != "3.11")
                     self.assertNotIn("pywin32", runtime)
 
     def test_failed_generation_does_not_publish_matching_provenance(self):

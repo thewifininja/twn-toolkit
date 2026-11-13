@@ -8,9 +8,11 @@ the banner animation. Back retains your choices. Nothing is installed until you
 accept **Install** on the review page.
 
 For an existing checkout, use `./twn setup`. Use `./twn setup --plain` for text
-prompts, or `--no-motion` for a still banner. Python 3.10 or newer must already be
+prompts, or `--no-motion` for a still banner. Python 3.11 or newer must already be
 available to start setup. On Debian/Ubuntu, virtual-environment support may also
 require `python3-venv`; it appears as a prerequisite in the dependency inventory.
+
+Existing installations using Python 3.10 must follow the [Python runtime migration guide](python-upgrade.md) before updating. Python 3.12 or newer is recommended.
 
 ## Changing startup mode
 

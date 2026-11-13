@@ -25,6 +25,19 @@ migration across concurrent web workers. No stepped upgrade through v0.19.2 is
 required. After this transition, app and CLI upgrades are equivalent again.
 Existing v0.19.2, manual, and macOS installations can use the normal workflow.
 
+## Python runtime transition
+
+Python 3.11 is now the minimum. The release's verified standalone migration tool
+can stage dependencies, preserve the old runtime, apply the source update, and
+restore matching code/data/runtime on failure. Users do not need to edit source
+or rename environments. See [automated Python migration](python-upgrade.md).
+
+Format-1 updaters reject format-2 bundles before installation. Run the independent
+migration tool once to cross that boundary; normal app/CLI upgrades then resume.
+Runtime-aware recovery points preserve a reference to the old environment and
+validate its integrity before any rollback. Earlier code/data-only recovery
+points retain their original behavior.
+
 ## What a supported release contains
 
 Every published stable release intended for in-app upgrade has two assets:

@@ -215,7 +215,7 @@ def platform_capabilities(*, system: str | None = None) -> list[dict[str, Any]]:
     capabilities = [
         {
             "name": "Python runtime",
-            "available": sys.version_info >= (3, 10),
+            "available": sys.version_info >= (3, 11),
             "status": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
             "detail": sys.executable,
         }

@@ -7,7 +7,7 @@ constrained by the runtime lock so testing does not silently select different
 runtime versions.
 
 The locks use environment markers from a universal resolution targeting Python
-3.10 and newer. CI installs them on Ubuntu Python 3.10/3.13, macOS Python 3.13,
+3.11 and newer. CI installs them on Ubuntu Python 3.11/3.13, macOS Python 3.13,
 and Arch's current Python, then runs `pip check` and the full suite. Universal
 resolution does not promise compatibility with every future Python, operating
 system, or architecture; changes still need the supported-platform CI and native
@@ -31,7 +31,7 @@ the public PyPI index, ignores uv/pip environment configuration, and records the
 resolver version, resolution policy, and input/output SHA-256 digests in
 `requirements-lock.json`. Review and commit both inputs, both outputs, and that
 provenance file together. The initial resolution was generated on CPython 3.12
-Linux; the Python 3.10 target controls dependency resolution, while source-package
+Linux; the Python 3.11 target controls dependency resolution, while source-package
 metadata builds may use the generator's available interpreter.
 
 [uv documents compiled requirements and constrained resolutions](https://docs.astral.sh/uv/pip/compile/).

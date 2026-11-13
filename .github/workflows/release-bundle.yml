@@ -25,7 +25,9 @@ jobs:
       - name: Validate tag and build bundle
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: python scripts/build_release_bundle.py --expected-version "$RELEASE_TAG"
+        run: |
+          python scripts/build_release_bundle.py --expected-version "$RELEASE_TAG"
+          python scripts/build_runtime_migration_tool.py
 
       - name: Upload verified bundle to the release
         env:

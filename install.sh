@@ -31,13 +31,22 @@ if [ ! -d "$INSTANCE" ] || [ -z "$(ls -A "$INSTANCE" 2>/dev/null)" ]; then
   FRESH_INSTALL=1
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "Python 3 is required but was not found in PATH." >&2
+BOOTSTRAP_PYTHON=${TWN_TOOLKIT_PYTHON:-python3}
+if [ -z "${TWN_TOOLKIT_PYTHON:-}" ] && [ -x "$VENV/bin/python" ]; then
+  BOOTSTRAP_PYTHON="$VENV/bin/python"
+fi
+if ! command -v "$BOOTSTRAP_PYTHON" >/dev/null 2>&1; then
+  echo "Python 3.11 or newer is required. Set TWN_TOOLKIT_PYTHON to its executable path." >&2
   exit 1
 fi
-
-if ! python3 -c 'import sys; raise SystemExit(sys.version_info < (3, 10))'; then
-  echo "Python 3.10 or newer is required." >&2
+if ! "$BOOTSTRAP_PYTHON" -c 'import sys; raise SystemExit(sys.version_info < (3, 11))'; then
+  echo "Python 3.11 or newer is required. Set TWN_TOOLKIT_PYTHON to a supported interpreter." >&2
+  echo "Existing files and packages have not been changed. See docs/python-upgrade.md." >&2
+  exit 1
+fi
+if [ -x "$VENV/bin/python" ] && ! "$VENV/bin/python" -c 'import sys; raise SystemExit(sys.version_info < (3, 11))'; then
+  echo "The existing .venv uses an unsupported Python. It has not been changed." >&2
+  echo "Stop the old toolkit and preserve its environment before rebuilding with Python 3.11+. See docs/python-upgrade.md." >&2
   exit 1
 fi
 
@@ -56,7 +65,8 @@ if [ -n "$INSTALL_STATUS_FILE" ] || [ -n "${TWN_TOOLKIT_UPGRADE_REQUEST_ID:-}" ]
   GUIDED=0
 fi
 if [ "$GUIDED" = 1 ] || { [ "$GUIDED" = auto ] && [ -t 0 ] && [ -t 1 ] && [ "$FRESH_INSTALL" -eq 1 ]; }; then
-  exec python3 "$ROOT/scripts/guided_install.py"
+  export TWN_TOOLKIT_PYTHON="$BOOTSTRAP_PYTHON"
+  exec "$BOOTSTRAP_PYTHON" "$ROOT/scripts/guided_install.py"
 fi
 
 if [ -x "$VENV/bin/python" ] && "$ROOT/twn" status >/dev/null 2>&1; then
@@ -66,7 +76,7 @@ fi
 if [ ! -x "$VENV/bin/python" ]; then
   INSTALL_STAGE=virtual-environment
   echo "Creating Python virtual environment..."
-  python3 -m venv "$VENV"
+  "$BOOTSTRAP_PYTHON" -m venv "$VENV"
 fi
 
 INSTALL_STAGE=dependency-lock

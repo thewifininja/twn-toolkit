@@ -577,9 +577,11 @@ Fresh interactive `./install.sh` runs the guided terminal installer. Revisit set
 
 ### Requirements
 
-- Python 3.10 or newer
+- Python 3.11 or newer
 - macOS, Linux, or Raspberry Pi OS
 - network access from the toolkit host to the devices being tested
+
+Existing installations can use the verified release migration tool to update source and move off Python 3.10 automatically, with matching runtime rollback. See the [Python migration guide](docs/python-upgrade.md). Python 3.12 or newer is recommended.
 
 Install and start the toolkit:
 
