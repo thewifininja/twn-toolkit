@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from flask import (
     Flask,
@@ -25,6 +24,7 @@ from .investigation_portability import (
     load_portable_case_archive,
 )
 from .live_tools import LiveToolStore
+from .local_redirects import local_redirect_target
 from .packet_capture import PacketCaptureStore
 from .ping_investigation import (
     PingInvestigationError,
@@ -897,8 +897,4 @@ def register_investigation_routes(
 
 
 def _safe_next(default: str) -> str:
-    value = request.form.get("next", "").strip()
-    parsed = urlsplit(value)
-    if value.startswith("/") and not value.startswith("//") and not parsed.netloc:
-        return value
-    return default
+    return local_redirect_target(request.form.get("next", "").strip(), default)

@@ -62,6 +62,11 @@ def rotate_log(path: Path, policy: LogPolicy) -> bool:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_uid != os.geteuid():
             raise OSError("Operational log must be a singly linked regular file owned by this user")
+        # The web server and launcher redirects create logs with the caller's
+        # umask. Request paths, client addresses and usernames belong to the
+        # toolkit account only, like the archives produced below.
+        if stat.S_IMODE(info.st_mode) & 0o077:
+            os.fchmod(fd, 0o600)
         # A reduced archive count takes effect even when this log is below threshold.
         for number in range(policy.backups + 1, MAX_BACKUPS + 1):
             path.with_name(f"{path.name}.{number}").unlink(missing_ok=True)

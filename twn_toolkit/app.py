@@ -12,6 +12,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import click
+from werkzeug.exceptions import HTTPException
 from flask import (
     Flask,
     Response,
@@ -28,6 +29,7 @@ from flask import (
 
 from .mso_ui import metadata as mso_metadata
 from .execution_context import request_target, switch_destination
+from .local_redirects import local_redirect_target
 from .login_throttle import LoginThrottle, LoginThrottled, LOGIN_BODY_BYTES
 from .activity import ActivityStore
 from .automation import AutomationStore
@@ -321,6 +323,9 @@ def create_app(instance_path: str | None = None) -> Flask:
         g.allowed_tool_ids = auth_store.effective_tool_ids(user)
         denied_tool_id = tool_id_for_endpoint(endpoint, request.view_args)
         if denied_tool_id and not _tool_access_allowed(denied_tool_id):
+            page = _error_page(403) if _wants_error_page() else None
+            if page is not None:
+                return page
             return Response("This user does not have access to that tool.", status=403)
         # Polls, AJAX traffic and automatic reloads are not evidence of activity.
         if (endpoint and endpoint != "session_activity"
@@ -328,6 +333,72 @@ def create_app(instance_path: str | None = None) -> Flask:
                 and request.headers.get("Sec-Fetch-User") == "?1"):
             session["last_seen"] = now
         return None
+
+    # Direct navigations to a missing, forbidden or failed page otherwise end on
+    # an unstyled server page with no way back into the application.
+    error_pages = {
+        403: ("Access denied", "This account cannot open that page",
+              "This account does not have access to that tool or page.",
+              "Ask an administrator to review this account's tool access."),
+        404: ("Not found", "That page is not available",
+              "The address does not match anything on this instance.",
+              "The item may have been deleted or moved, or the link may be out of date."),
+        405: ("Not available", "That address cannot be opened directly",
+              "It only accepts an action submitted from a toolkit page.",
+              "Open the tool from the navigation and repeat the action there."),
+        410: ("No longer available", "That result is no longer available",
+              "It has expired or was already retrieved. Nothing was run again.", ""),
+        500: ("Unexpected error", "The toolkit could not complete that request",
+              "An unexpected error was recorded in the toolkit error log.",
+              "If the problem repeats, review "
+              "Diagnostics or the web error log before retrying."),
+    }
+
+    def _wants_error_page() -> bool:
+        """True only for a person navigating a browser tab to this address."""
+        if request.method not in {"GET", "HEAD"}:
+            return False
+        if request.headers.get("X-Requested-With"):
+            return False
+        fetch_mode = request.headers.get("Sec-Fetch-Mode")
+        if fetch_mode:
+            return (
+                fetch_mode == "navigate"
+                and request.headers.get("Sec-Fetch-Dest", "document") == "document"
+            )
+        # Agent tunnels and older browsers send no fetch metadata. Script
+        # requests default to */*; only a page load names text/html.
+        return "text/html" in request.headers.get("Accept", "")
+
+    def _error_page(code: int, description: str = ""):
+        eyebrow, title, detail, hint = error_pages.get(
+            code, ("Request not completed", "That request could not be completed",
+                   description or "The toolkit could not complete that request.", "")
+        )
+        try:
+            return render_template(
+                "error.html", error_code=code, error_eyebrow=eyebrow,
+                error_title=title, error_detail=detail, error_hint=hint,
+                page_title=title,
+            ), code
+        except Exception:
+            app.logger.exception("Toolkit error page could not be rendered")
+            return None
+
+    @app.errorhandler(HTTPException)
+    def navigable_error_page(error: HTTPException):
+        code = error.code or 500
+        if code < 400 or not _wants_error_page():
+            return error
+        page = _error_page(code, str(error.description or ""))
+        if page is None:
+            return error
+        # Keep protocol headers such as Allow, WWW-Authenticate and Retry-After
+        # while replacing only the browser-facing representation.
+        response = error.get_response()
+        response.set_data(page[0])
+        response.content_type = "text/html; charset=utf-8"
+        return response
 
     from .terminal_websocket import websocket_route
 
@@ -646,6 +717,15 @@ def create_app(instance_path: str | None = None) -> Flask:
         response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
         response.headers.setdefault(
             "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+        )
+        # Containment that needs no change to existing pages: no plugin
+        # content, no <base> rewriting of relative URLs, no framing, and forms
+        # may only submit to this origin. Script and style sources are not
+        # restricted yet; templates still carry inline handlers.
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; "
+            "form-action 'self'",
         )
         if (request.endpoint or "") not in {"static", "favicon"}:
             response.headers.setdefault("Cache-Control", "no-store")
@@ -1204,9 +1284,7 @@ def create_app(instance_path: str | None = None) -> Flask:
         session["last_seen"] = int(time.time())
 
     def _validated_next_url(candidate: str) -> str:
-        if candidate.startswith("/") and not candidate.startswith("//"):
-            return candidate
-        return url_for("index")
+        return local_redirect_target(candidate, url_for("index"))
 
     def _safe_next_url() -> str:
         return _validated_next_url(request.args.get("next", ""))
