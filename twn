@@ -579,33 +579,42 @@ sync_launchd_transfer_markers() {
 
 acquire_managed_worker_lock() {
   worker_lock="$1.lock"
-  attempts=0
-  while ! mkdir "$worker_lock" 2>/dev/null; do
-    lock_owner=""
-    if [ -f "$worker_lock/owner" ]; then lock_owner=$(cat "$worker_lock/owner" 2>/dev/null || true); fi
-    if [ -n "$lock_owner" ] && ! pid_is_running "$lock_owner"; then
-      rm -f "$worker_lock/owner"
-      rmdir "$worker_lock" 2>/dev/null || true
-      continue
-    fi
-    attempts=$((attempts + 1))
-    if [ -z "$lock_owner" ] && [ "$attempts" -ge 10 ]; then
-      rmdir "$worker_lock" 2>/dev/null || true
-      continue
-    fi
-    if [ "$attempts" -ge 100 ]; then
-      echo "Another managed-service operation is still in progress." >&2
-      return 1
-    fi
-    sleep 0.1
-  done
-  echo "$$" > "$worker_lock/owner"
+  # Keep the guard inode stable: unlinking it would let two callers lock
+  # different files. The inherited descriptor keeps flock held in this shell.
+  (umask 077; touch "$worker_lock.guard") || return 1
+  exec 9>"$worker_lock.guard"
+  if ! "$PYTHON" -c '
+import fcntl, sys, time
+deadline = time.monotonic() + 10
+while True:
+    try:
+        fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        break
+    except BlockingIOError:
+        if time.monotonic() >= deadline:
+            print("Another managed-service operation is still in progress.", file=sys.stderr)
+            raise SystemExit(1)
+        time.sleep(0.1)
+'; then
+    exec 9>&-
+    return 1
+  fi
+  # The directory is an activity marker for the supervisor. Stale marker
+  # cleanup is safe only while holding the kernel lock, never by PID alone.
+  if ! mkdir -p "$worker_lock" || ! echo "$$" > "$worker_lock/owner"; then
+    "$PYTHON" -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_UN)'
+    exec 9>&-
+    return 1
+  fi
 }
 
 release_managed_worker_lock() {
   worker_lock="$1.lock"
   rm -f "$worker_lock/owner"
   rmdir "$worker_lock" 2>/dev/null || true
+  "$PYTHON" -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_UN)'
+  exec 9>&-
+
 }
 
 clear_managed_runtime() {
@@ -643,7 +652,7 @@ stop_managed_worker() {
   worker_readyfile=$2
   cleanup=$3
   worker_module=$4
-  acquire_managed_worker_lock "$worker_pidfile"
+  acquire_managed_worker_lock "$worker_pidfile" || return 1
   status=0
   stop_managed_worker_unlocked "$worker_pidfile" "$worker_readyfile" "$cleanup" || status=$?
   if [ "$status" -eq 0 ]; then cleanup_worker_processes "$worker_module" 0 || status=$?; fi
@@ -682,9 +691,9 @@ start_managed_worker_unlocked() {
       --pid-file "$worker_pidfile" \
       --ready-file "$worker_readyfile" \
       --log-file "$worker_log" \
-      </dev/null >> "$worker_log" 2>&1 &
+      </dev/null >> "$worker_log" 2>&1 9>&- &
   else
-    if ! "$PYTHON" -m "$worker_module" --instance "$INSTANCE" --daemon --pid-file "$worker_pidfile" --ready-file "$worker_readyfile" --log-file "$worker_log"; then
+    if ! "$PYTHON" -m "$worker_module" --instance "$INSTANCE" --daemon --pid-file "$worker_pidfile" --ready-file "$worker_readyfile" --log-file "$worker_log" 9>&-; then
       echo "The $worker_label service launcher failed before daemon startup." >&2
       return 1
     fi
@@ -716,7 +725,7 @@ start_managed_worker() {
   worker_module=$5
   worker_label=$6
   cleanup=$7
-  acquire_managed_worker_lock "$worker_pidfile"
+  acquire_managed_worker_lock "$worker_pidfile" || return 1
   status=0
   cleanup_managed_daemon "$worker_module" "$worker_pidfile" || status=$?
   if [ "$status" -eq 0 ]; then
@@ -734,7 +743,7 @@ restart_managed_worker() {
   worker_module=$5
   worker_label=$6
   cleanup=$7
-  acquire_managed_worker_lock "$worker_pidfile"
+  acquire_managed_worker_lock "$worker_pidfile" || return 1
   status=0
   stop_managed_worker_unlocked "$worker_pidfile" "$worker_readyfile" "$cleanup" || status=$?
   if [ "$status" -eq 0 ]; then cleanup_daemon_processes "$worker_module" 0 || status=$?; fi
@@ -945,13 +954,13 @@ start_distributed_unlocked() {
       --instance "$INSTANCE" \
       --pid-file "$DISTRIBUTED_PIDFILE" \
       --log-file "$DISTRIBUTED_LOG" \
-      </dev/null >> "$DISTRIBUTED_LOG" 2>&1 &
+      </dev/null >> "$DISTRIBUTED_LOG" 2>&1 9>&- &
   else
     "$PYTHON" -m twn_toolkit.distributed_worker \
       --instance "$INSTANCE" \
       --daemon \
       --pid-file "$DISTRIBUTED_PIDFILE" \
-      --log-file "$DISTRIBUTED_LOG"
+      --log-file "$DISTRIBUTED_LOG" 9>&-
   fi
   attempts=0
   while [ "$attempts" -lt 30 ]; do
