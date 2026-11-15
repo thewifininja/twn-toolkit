@@ -269,6 +269,12 @@ def _authoritative_txt_check(
     return result
 
 
+_RUNTIME_PROBE_FAILURE_SECONDS = 60.0
+_RUNTIME_PROBE_LOCK = threading.Lock()
+# One entry: (monotonic expiry or None, result) for the current executable.
+_RUNTIME_PROBES: dict[tuple[Any, ...], tuple[float | None, dict[str, Any]]] = {}
+
+
 class AcmeDnsManager:
     """Coordinates Certbot manual DNS challenges through filesystem job state."""
 
@@ -297,6 +303,24 @@ class AcmeDnsManager:
         }
         if not self.certbot_path:
             return result
+        # Starting Certbot only to print its version costs a full interpreter
+        # start on every page view. The answer cannot change until the
+        # executable does, so remember it for that exact file.
+        try:
+            executable = os.stat(self.certbot_path)
+        except OSError:
+            signature = None
+        else:
+            signature = (
+                self.certbot_path, executable.st_ino,
+                executable.st_mtime_ns, executable.st_size,
+            )
+        now = time.monotonic()
+        if signature is not None:
+            with _RUNTIME_PROBE_LOCK:
+                cached = _RUNTIME_PROBES.get(signature)
+            if cached is not None and (cached[0] is None or now < cached[0]):
+                return dict(cached[1])
         try:
             completed = subprocess.run(
                 [self.certbot_path, "--version"],
@@ -306,10 +330,17 @@ class AcmeDnsManager:
                 timeout=3,
             )
         except (OSError, subprocess.SubprocessError):
-            return result
-        output = (completed.stdout or completed.stderr).strip()
-        result["version"] = output[:100]
-        result["available"] = completed.returncode == 0
+            succeeded = False
+        else:
+            output = (completed.stdout or completed.stderr).strip()
+            result["version"] = output[:100]
+            result["available"] = succeeded = completed.returncode == 0
+        if signature is not None:
+            # A failed or timed-out probe may be transient; retry it soon.
+            expires = None if succeeded else now + _RUNTIME_PROBE_FAILURE_SECONDS
+            with _RUNTIME_PROBE_LOCK:
+                _RUNTIME_PROBES.clear()
+                _RUNTIME_PROBES[signature] = (expires, dict(result))
         return result
 
     def start(self, values: dict[str, Any]) -> dict[str, Any]:

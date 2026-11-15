@@ -189,7 +189,13 @@ class SSHTransferHistoryStore:
         connection.row_factory = sqlite3.Row
         try:
             yield connection; connection.commit()
-        finally: connection.close()
+        finally:
+            connection.close()
+            # Client addresses, usernames and file names; match the TFTP history.
+            try:
+                os.chmod(self.path, 0o600)
+            except OSError:
+                pass  # Never fail a transfer record over file ownership.
 
 
 def ssh_transfer_process_status(instance_path: str) -> dict[str, Any]:

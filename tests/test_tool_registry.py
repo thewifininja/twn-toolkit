@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 
 from twn_toolkit import create_app
@@ -120,7 +121,9 @@ class ToolRegistryTests(unittest.TestCase):
         self.assertNotIn("admin.settings", access_tool_ids)
 
     def test_logged_in_routes_are_mapped_or_intentionally_self_service(self) -> None:
-        app = create_app()
+        instance = tempfile.TemporaryDirectory()
+        self.addCleanup(instance.cleanup)
+        app = create_app(instance.name)
         task_endpoints = {
             "task_form",
             "task_csv_template",
